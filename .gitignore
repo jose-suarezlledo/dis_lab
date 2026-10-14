@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+build/
+dist/
+.venv/
+venv/
+
+# Secrets: API keys live in environment variables, never in the repo
+.env
+.streamlit/secrets.toml
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+~$*
+
+# Never commit student data (grades, submissions, exam results)
+*grade*
+*Grade*
+*submission*
+assignment/

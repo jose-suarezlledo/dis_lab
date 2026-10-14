@@ -1,0 +1,47 @@
+ticker,name,asset_class,currency,ucits,notes
+SPY,SPDR S&P 500 ETF,US equity,USD,N,US large caps
+QQQ,Invesco QQQ (Nasdaq-100),US equity,USD,N,US large-cap tech/growth
+IWM,iShares Russell 2000,US equity,USD,N,US small caps
+VTI,Vanguard Total Stock Market,US equity,USD,N,All US stocks
+IVE,iShares S&P 500 Value,Factor equity,USD,N,Value half of the S&P 500
+IVW,iShares S&P 500 Growth,Factor equity,USD,N,Growth half of the S&P 500
+MTUM,iShares MSCI USA Momentum,Factor equity,USD,N,Momentum factor
+QUAL,iShares MSCI USA Quality,Factor equity,USD,N,Quality factor
+USMV,iShares MSCI USA Min Vol,Factor equity,USD,N,Minimum-volatility factor
+VLUE,iShares MSCI USA Value,Factor equity,USD,N,Value factor
+SPHQ,Invesco S&P 500 Quality,Factor equity,USD,N,Quality factor (Session 2 exercise)
+SPMO,Invesco S&P 500 Momentum,Factor equity,USD,N,Momentum factor (Session 2 exercise)
+EFA,iShares MSCI EAFE,Intl equity,USD,N,Developed markets ex-US
+EEM,iShares MSCI Emerging Markets,Intl equity,USD,N,Emerging markets
+VWO,Vanguard FTSE Emerging Markets,Intl equity,USD,N,Emerging markets
+URTH,iShares MSCI World,Global equity,USD,N,Developed markets incl. US
+ACWI,iShares MSCI ACWI,Global equity,USD,N,Developed + emerging
+VT,Vanguard Total World Stock,Global equity,USD,N,Developed + emerging incl. small caps
+AGG,iShares Core US Aggregate Bond,Bonds,USD,N,US investment-grade bonds
+BND,Vanguard Total Bond Market,Bonds,USD,N,US investment-grade bonds
+TLT,iShares 20+ Year Treasury,Bonds,USD,N,Long US Treasuries
+IEF,iShares 7-10 Year Treasury,Bonds,USD,N,Intermediate US Treasuries
+SHY,iShares 1-3 Year Treasury,Bonds,USD,N,Short US Treasuries
+BIL,SPDR 1-3 Month T-Bill,Cash,USD,N,Cash proxy
+LQD,iShares iBoxx IG Corporate,Bonds,USD,N,Investment-grade corporates
+HYG,iShares iBoxx High Yield,Bonds,USD,N,High-yield corporates
+TIP,iShares TIPS,Bonds,USD,N,Inflation-linked US Treasuries
+BNDX,Vanguard Total Intl Bond (USD hedged),Bonds,USD,N,Non-US bonds hedged to USD
+GLD,SPDR Gold Shares,Commodities,USD,N,Gold
+DBC,Invesco DB Commodity Index,Commodities,USD,N,Broad commodities (futures)
+VNQ,Vanguard Real Estate,Real estate,USD,N,US REITs
+AOA,iShares Core Aggressive Allocation,Multi-asset,USD,N,~80/20 equity/bonds
+AOR,iShares Core Growth Allocation,Multi-asset,USD,N,~60/40 equity/bonds
+AOM,iShares Core Moderate Allocation,Multi-asset,USD,N,~40/60 equity/bonds
+VFINX,Vanguard 500 Index Fund (mutual fund),US equity,USD,N,Long history (1976-) S&P 500 with dividends
+VBMFX,Vanguard Total Bond Market Index Fund,Bonds,USD,N,Long history (1986-) US bonds
+VUSTX,Vanguard Long-Term Treasury Fund,Bonds,USD,N,Long history (1986-) long Treasuries
+VBINX,Vanguard Balanced Index Fund,Multi-asset,USD,N,Long history (1992-) 60/40 US stocks/bonds
+IWDA.AS,iShares Core MSCI World (Acc),Global equity,EUR,Y,UCITS; Euronext Amsterdam EUR line
+VWCE.DE,Vanguard FTSE All-World (Acc),Global equity,EUR,Y,UCITS; Xetra EUR line
+SXR8.DE,iShares Core S&P 500 (Acc),US equity,EUR,Y,UCITS; Xetra EUR line
+IS3N.DE,iShares Core MSCI EM IMI (Acc),Intl equity,EUR,Y,UCITS; Xetra EUR line
+EUNH.DE,iShares Core Euro Government Bond,Bonds,EUR,Y,UCITS; euro-area government bonds
+4GLD.DE,Xetra-Gold,Commodities,EUR,N,Physically backed gold (ETC) in EUR
+BTC-USD,Bitcoin,Crypto,USD,N,Trades 7 days a week
+EURUSD=X,EUR/USD exchange rate,FX,USD,N,USD per 1 EUR
