@@ -10,9 +10,9 @@ Educational material only. Nothing here is investment advice.
 
 | Folder | What it holds |
 |---|---|
-| `engine/` | One tested Python package used by every app and notebook. `data.py` loads the cached snapshots; `metrics.py` holds every performance and risk definition. |
+| `engine/` | One tested Python package used by every app and notebook. `data.py` loads the cached snapshots and converts currencies; `metrics.py` holds every performance and risk definition; `portfolio.py` builds fixed-weight portfolios (drift, rebalancing, costs); `stylized.py` covers fat tails, volatility clustering and volatility drag; `checks.py` runs the automatic bias checks. |
 | `data/` | CSV snapshots with download dates (`manifest.csv`). The apps never download live during class. |
-| `apps/` | Streamlit apps, one per session tool. |
+| `apps/` | Streamlit apps, one per session tool (see `apps/README.md`). |
 | `notebooks/` | Optional Colab notebooks (same engine) for students who want to code. |
 | `scripts/` | `refresh_data.py`, the only script that downloads data. |
 | `tests/` | `py -m pytest` |

@@ -42,6 +42,10 @@ __all__ = [
     "download_fred",
     "save_fred",
     "risk_free_rate",
+    "EURO_RF_SERIES",
+    "FX_SERIES",
+    "CURRENCIES",
+    "convert_currency",
     "load_indexa",
 ]
 
@@ -111,7 +115,7 @@ def load_prices(
     for t in tickers:
         s = pd.read_csv(folder / f"{_file_stem(t)}.csv", index_col="date", parse_dates=True)
         cols.append(s["close"].rename(t))
-    df = pd.concat(cols, axis=1).sort_index()
+    df = pd.concat(cols, axis=1, sort=True).sort_index()
     df.index.name = "date"
     return df.loc[start:end]
 
@@ -269,6 +273,50 @@ def risk_free_rate(
     if s.empty:
         raise ValueError(f"no {series_id} data between {start} and {end}")
     return float(s.mean() / 100)
+
+
+EURO_RF_SERIES = "IR3TIB01EZM156N"  # euro-area 3-month interbank rate, % (OECD, monthly)
+
+
+# --------------------------------------------------------------------------- currency
+
+
+FX_SERIES = "DEXUSEU"  # USD per 1 EUR, Federal Reserve H.10 noon New York rate (FRED)
+CURRENCIES = ("USD", "EUR")
+
+
+def convert_currency(
+    prices: pd.DataFrame,
+    to: str,
+    currencies: dict[str, str] | None = None,
+    data_dir: Path | str | None = None,
+) -> pd.DataFrame:
+    """Express every column in one currency (USD or EUR), as an unhedged investor sees it.
+
+    currencies: listing currency per column; by default from data/universe.csv.
+    The FX rate is the Fed's daily DEXUSEU (Yahoo's EURUSD=X has bad ticks, up to
+    15% off in 2008). Dates are matched exactly: on a date with no Fed rate (US
+    holidays) a converted column is NaN, never filled. The Fed fixes at noon New
+    York while European ETFs close at 17:30 CET, a small timing mismatch that
+    shows up as daily noise, not as a bias.
+    """
+    if to not in CURRENCIES:
+        raise ValueError(f"to must be one of {CURRENCIES}")
+    if currencies is None:
+        currencies = load_universe(data_dir)["currency"].to_dict()
+    unknown = [c for c in prices.columns if c not in currencies]
+    if unknown:
+        raise KeyError(f"listing currency unknown for {unknown}")
+    bad = {c: currencies[c] for c in prices.columns if currencies[c] not in CURRENCIES}
+    if bad:
+        raise ValueError(f"only USD and EUR listings can be converted, got {bad}")
+    fx = load_fred(FX_SERIES, data_dir).reindex(prices.index)
+    out = prices.copy()
+    for c in prices.columns:
+        if currencies[c] == to:
+            continue
+        out[c] = prices[c] / fx if to == "EUR" else prices[c] * fx
+    return out
 
 
 # --------------------------------------------------------------------------- Indexa Capital

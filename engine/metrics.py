@@ -60,6 +60,12 @@ __all__ = [
     "turnover",
     "rolling_cagr",
     "rolling_vol",
+    "rolling_correlation",
+    "FREQUENCIES",
+    "to_frequency",
+    "sharpe_standard_error",
+    "STRESS_EPISODES",
+    "episode_returns",
     "align",
     "summary",
     "summary_table",
@@ -264,7 +270,7 @@ def align(*navs: pd.Series, how: str = "inner") -> pd.DataFrame:
     is kept only if every series has a price, so a holiday in one market turns
     into a multi-day return in the next row instead of a fake 0% return.
     """
-    df = pd.concat(navs, axis=1, join=how)
+    df = pd.concat(navs, axis=1, join=how, sort=True)
     return df.dropna(how="any")
 
 
@@ -357,6 +363,81 @@ def rolling_vol(nav: pd.Series, years: float = 3.0, ppy: int | None = None) -> p
     p = _ppy(s, ppy)
     window = max(int(round(years * p)), 2)
     return to_returns(s).rolling(window).std(ddof=1).dropna() * np.sqrt(p)
+
+
+def rolling_correlation(nav: pd.Series, bench: pd.Series, years: float = 1.0) -> pd.Series:
+    """Correlation of returns with a benchmark over a trailing window of `years`."""
+    rp, rb, p = _paired_returns(nav, bench)
+    window = max(int(round(years * p)), 3)
+    return rp.rolling(window).corr(rb).dropna().rename(nav.name)
+
+
+# --------------------------------------------------------------------------- frequency
+
+
+FREQUENCIES = {"daily": None, "weekly": "W-FRI", "monthly": "M"}
+
+
+def to_frequency(levels: pd.DataFrame | pd.Series, freq: str) -> pd.DataFrame | pd.Series:
+    """Sample levels at the last available date of each week / month.
+
+    Real dates are kept (no relabelling to the calendar period end), and the very
+    first observation is kept too, so CAGR is identical at every frequency; what
+    changes is volatility, drawdown depth and correlation. Apply it after `align`.
+    """
+    if freq not in FREQUENCIES:
+        raise ValueError(f"freq must be one of {list(FREQUENCIES)}")
+    alias = FREQUENCIES[freq]
+    if alias is None:
+        return levels
+    idx = levels.index
+    period = idx.to_period(alias)
+    last_of_period = np.ones(len(idx), dtype=bool)
+    last_of_period[:-1] = period[:-1] != period[1:]
+    last_of_period[0] = True
+    return levels.loc[last_of_period]
+
+
+# --------------------------------------------------------------------------- uncertainty & episodes
+
+
+def sharpe_standard_error(sharpe_ratio: float, years: float) -> float:
+    """Approximate standard error of an annualized Sharpe ratio (Lo, 2002, iid returns).
+
+    SE = sqrt((1 + SR^2 / 2) / years). With 10 years of data and a Sharpe of 0.5
+    the SE is about 0.33, so a Sharpe of 0.5 is statistically hard to tell apart
+    from 0 or from 1. Fat tails and autocorrelation make the true SE larger.
+    """
+    if years <= 0:
+        return np.nan
+    return float(np.sqrt((1 + sharpe_ratio**2 / 2) / years))
+
+
+# S&P 500 closing peak -> closing trough of each major sell-off.
+STRESS_EPISODES = {
+    "Dot-com bust": ("2000-03-24", "2002-10-09"),
+    "Global financial crisis": ("2007-10-09", "2009-03-09"),
+    "Covid crash": ("2020-02-19", "2020-03-23"),
+    "2022 inflation shock": ("2022-01-03", "2022-10-12"),
+    "2025 tariff shock": ("2025-02-19", "2025-04-08"),
+}
+
+
+def episode_returns(nav: pd.Series, episodes: dict[str, tuple[str, str]] | None = None) -> pd.Series:
+    """Total return over each episode (last level on or before each date).
+
+    NaN when the series does not cover the whole episode.
+    """
+    s = _clean(nav)
+    episodes = STRESS_EPISODES if episodes is None else episodes
+    out = {}
+    for label, (start, end) in episodes.items():
+        a, b = pd.Timestamp(start), pd.Timestamp(end)
+        if s.index[0] > a or s.index[-1] < b:
+            out[label] = np.nan
+        else:
+            out[label] = float(s.asof(b) / s.asof(a) - 1)
+    return pd.Series(out, name=nav.name)
 
 
 # --------------------------------------------------------------------------- summary

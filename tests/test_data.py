@@ -77,7 +77,28 @@ def test_indexa_parser_handles_semicolon_decimal_comma_and_weekends(tmp_path):
     assert len(daily) == len(days)
 
 
+def test_convert_currency(tmp_path):
+    idx = pd.bdate_range("2024-01-01", periods=4)
+    fx = pd.Series([1.10, 1.20, np.nan, 1.25], index=idx, name="DEXUSEU")
+    data.save_fred(fx, data_dir=tmp_path)
+    p = pd.DataFrame({"US": [110.0, 120.0, 130.0, 125.0], "EU": [100.0, 100.0, 100.0, 100.0]}, index=idx)
+    ccy = {"US": "USD", "EU": "EUR"}
+    eur = data.convert_currency(p, "EUR", ccy, data_dir=tmp_path)
+    assert eur["US"].iloc[0] == pytest.approx(100.0)  # 110 USD / 1.10
+    assert np.isnan(eur["US"].iloc[2])  # no Fed rate that day: missing, never filled
+    pd.testing.assert_series_equal(eur["EU"], p["EU"])
+    usd = data.convert_currency(p, "USD", ccy, data_dir=tmp_path)
+    assert usd["EU"].iloc[1] == pytest.approx(120.0)
+    with pytest.raises(KeyError):
+        data.convert_currency(p.assign(X=1.0), "EUR", ccy, data_dir=tmp_path)
+
+
 # --------------------------------------------------------------------------- the real snapshot
+
+
+def test_fx_snapshot_is_clean():
+    fx = data.load_fred(data.FX_SERIES)
+    assert fx.pct_change().abs().max() < 0.06  # Yahoo's EURUSD=X had 17% fake daily moves
 
 
 def test_cached_snapshot_integrity():

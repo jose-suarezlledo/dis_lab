@@ -263,3 +263,42 @@ def test_summary_table_uses_common_window():
     assert tbl.loc["start", "old"] == idx[100].date() == tbl.loc["start", "new"]
     assert np.isnan(tbl.loc["beta", "old"])  # the benchmark is not compared with itself
     assert np.isfinite(tbl.loc["beta", "new"])
+
+
+# --------------------------------------------------------------------------- frequency, rolling, episodes
+
+
+def test_to_frequency_keeps_real_dates_and_cagr():
+    idx = pd.bdate_range("2020-01-06", "2020-03-18")
+    s = pd.Series(np.linspace(100, 120, len(idx)), index=idx)
+    mth = m.to_frequency(s, "monthly")
+    assert list(mth.index) == list(pd.to_datetime(["2020-01-06", "2020-01-31", "2020-02-28", "2020-03-18"]))
+    assert m.cagr(mth) == pytest.approx(m.cagr(s))
+    wk = m.to_frequency(s, "weekly")
+    assert (wk.index[1:-1].dayofweek == 4).all()  # Fridays (no holidays in this range)
+    assert m.to_frequency(s, "daily") is s
+
+
+def test_to_frequency_rejects_unknown():
+    with pytest.raises(ValueError):
+        m.to_frequency(pd.Series(dtype=float), "hourly")
+
+
+def test_rolling_correlation_of_identical_series_is_one(rng):
+    a = nav_from_returns(rng.normal(0, 0.01, 600))
+    rc = m.rolling_correlation(a, a, years=1)
+    assert len(rc) > 0 and np.allclose(rc, 1.0)
+
+
+def test_sharpe_standard_error():
+    assert m.sharpe_standard_error(0.0, 4) == pytest.approx(0.5)
+    assert m.sharpe_standard_error(0.5, 10) == pytest.approx(np.sqrt(1.125 / 10))
+    assert np.isnan(m.sharpe_standard_error(1.0, 0))
+
+
+def test_episode_returns_uses_asof_and_nan_outside():
+    s = pd.Series([100.0, 50.0, 80.0], index=pd.to_datetime(["2020-02-18", "2020-03-20", "2020-06-01"]))
+    eps = {"crash": ("2020-02-19", "2020-03-23"), "before": ("2019-01-01", "2019-02-01")}
+    out = m.episode_returns(s, eps)
+    assert out["crash"] == pytest.approx(-0.5)  # last level on or before each date
+    assert np.isnan(out["before"])

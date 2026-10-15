@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dis-lab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared engine and apps for the IESE MBA elective Data-driven Investment Strategies (DIS)"
 requires-python = ">=3.11"
 dependencies = ["pandas>=2.2", "numpy>=1.26"]
 
 [project.optional-dependencies]
 download = ["yfinance>=0.2.50"]
-apps = ["streamlit>=1.40", "plotly>=5.20"]
+apps = ["streamlit>=1.50", "plotly>=5.20"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]

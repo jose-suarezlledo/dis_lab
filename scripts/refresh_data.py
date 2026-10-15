@@ -19,6 +19,8 @@ from engine import data  # noqa: E402
 FRED_SERIES = {
     "DTB3": "3-month Treasury bill rate, % (risk-free rate)",
     "DGS10": "10-year Treasury constant-maturity yield, %",
+    "DEXUSEU": "USD per EUR, Fed H.10 noon rate (currency conversion)",
+    "IR3TIB01EZM156N": "Euro-area 3-month interbank rate, %, monthly (EUR risk-free rate)",
 }
 
 

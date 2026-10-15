@@ -1,6 +1,8 @@
 kind,id,source,first_date,last_date,rows,downloaded
+fred,DEXUSEU,FRED fredgraph.csv (latest vintage),1999-01-04,2026-10-09,6965,2026-10-15
 fred,DGS10,FRED fredgraph.csv (latest vintage),1962-01-02,2026-10-09,16179,2026-10-14
 fred,DTB3,FRED fredgraph.csv (latest vintage),1954-01-04,2026-10-09,18185,2026-10-14
+fred,IR3TIB01EZM156N,FRED fredgraph.csv (latest vintage),1994-01-01,2026-01-01,385,2026-10-15
 price,4GLD.DE,yfinance (auto_adjust=True),2009-11-13,2026-10-12,4291,2026-10-14
 price,ACWI,yfinance (auto_adjust=True),2008-03-28,2026-10-13,4666,2026-10-14
 price,AGG,yfinance (auto_adjust=True),2003-09-29,2026-10-13,5797,2026-10-14

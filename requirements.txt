@@ -1,6 +1,6 @@
-# Used by Streamlit Community Cloud to build the apps.
+# Used by Streamlit Community Cloud to build the apps (they read the cached snapshot,
+# so yfinance is not needed there; install it locally with `py -m pip install -e ".[download]"`).
 pandas>=2.2
 numpy>=1.26
-streamlit>=1.40
+streamlit>=1.50
 plotly>=5.20
-yfinance>=0.2.50
