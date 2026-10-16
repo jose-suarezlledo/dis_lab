@@ -59,7 +59,7 @@ SCENARIOS = {
                  "Look at CAGR, max drawdown and time under water side by side.",
     ),
     "Myth: the highest return is the best investment": dict(
-        assets=["QQQ", "SPY", "IWM", "VBINX"], benchmark="SPY", portfolio=None,
+        assets=["QQQ", "SPY", "VBINX"], benchmark="SPY", portfolio=None,
         start=dt.date(1999, 3, 10), currency="As listed", freq="daily",
         question="QQQ has the best CAGR since 1999. Would you have held it from 2000 to 2015? "
                  "Check its max drawdown and time under water, then try starting the window in 2009.",
