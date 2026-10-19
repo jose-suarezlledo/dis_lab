@@ -36,6 +36,6 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 - The repo sits inside OneDrive. If OneDrive ever reports conflicts in `.git/`, pause OneDrive sync before git operations.
 
 ## Next steps
-1. **Deploy** `apps/performance_analyzer.py` on Streamlit Community Cloud (share.streamlit.io, signed in as `jose-suarezlledo`; repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/performance_analyzer.py`, Python 3.12). Record the URL here and in `Sessions/1_.../CLAUDE.md`.
+1. **Deployed** 19 Oct 2026: https://dislab-performance-analyzer-s1.streamlit.app/ (Streamlit Community Cloud, from `main`, `apps/performance_analyzer.py`). Pushing to `main` redeploys it. Free apps sleep after days without traffic: open it ~15 min before class.
 2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S3 robo simulator and S5 TAA.
 3. Extend the analyzer for S3 (Indexa profiles as series, hedged vs unhedged) and S8 (PCA/contribution) rather than writing new apps.
