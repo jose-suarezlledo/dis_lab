@@ -23,7 +23,8 @@ import pandas as pd
 
 from .metrics import align, to_returns, years_between
 
-__all__ = ["REBALANCE_FREQUENCIES", "PortfolioResult", "fixed_weight_portfolio"]
+__all__ = ["REBALANCE_FREQUENCIES", "PortfolioResult", "fixed_weight_portfolio", "cash_from_rate",
+           "vol_target_portfolio"]
 
 # label -> pandas Period alias (None = never rebalance, weights drift forever)
 REBALANCE_FREQUENCIES = {"none": None, "monthly": "M", "quarterly": "Q", "yearly": "Y"}
@@ -116,4 +117,73 @@ def fixed_weight_portfolio(
         costs=costs,
         annual_turnover=float(turnover.sum() / years),
         annual_cost=float(costs.sum() / years),
+    )
+
+
+# --------------------------------------------------------------------------- volatility targeting
+
+
+def cash_from_rate(rate_pct: pd.Series, index: pd.DatetimeIndex, start_value: float = 100.0) -> pd.Series:
+    """Value of cash earning a quoted annual rate (in %, e.g. FRED DTB3), on the given dates.
+
+    Each period earns the rate known at the *start* of the period, accrued on calendar
+    days / 360 (money-market convention). Gaps in the rate are filled with the last
+    published value, which is what an investor would have known.
+    """
+    rate = rate_pct.sort_index().reindex(rate_pct.index.union(index)).ffill().reindex(index)
+    if rate.isna().any():
+        raise ValueError("the rate series starts after the first date")
+    days = index.to_series().diff().dt.days.fillna(0).to_numpy()
+    growth = 1 + rate.shift(1).fillna(0).to_numpy() / 100 * days / 360
+    return pd.Series(start_value * np.cumprod(growth), index=index, name="Cash")
+
+
+def vol_target_portfolio(
+    risky: pd.Series,
+    cash: pd.Series,
+    target_vol: float = 0.10,
+    lookback: int = 63,
+    max_weight: float = 1.0,
+    cost_bps: float = 0.0,
+    lag: int = 1,
+    start_value: float = 100.0,
+    name: str = "Vol target",
+) -> PortfolioResult:
+    """Hold the risky asset at weight min(target_vol / realized vol, max_weight), the rest in cash.
+
+    Realized vol = standard deviation of the last `lookback` daily returns x sqrt(252),
+    measured at the close. With lag=1 (the default and the only honest choice) the weight
+    set at today's close earns tomorrow's return. lag=0 uses today's volatility to trade
+    today's return: look-ahead bias, kept only to show how much it flatters a backtest.
+    Rebalanced daily to the target weight; cost = |change in weight| x cost_bps.
+    The strategy starts once the first weight is available (lookback + lag days in).
+    """
+    if lag < 0:
+        raise ValueError("lag must be >= 0")
+    if not 0 < max_weight:
+        raise ValueError("max_weight must be positive")
+    levels = align(risky.rename("risky"), cash.rename("cash"))
+    r = levels.pct_change(fill_method=None)
+    vol = r["risky"].rolling(lookback, min_periods=lookback).std() * np.sqrt(252)
+    signal = (target_vol / vol).clip(upper=max_weight)  # known at the close of each day
+    held = signal.shift(lag)  # weight held over each day's return
+    first = held.first_valid_index()
+    if first is None:
+        raise ValueError("not enough data for the lookback")
+    held, r = held.loc[first:], r.loc[first:]
+    traded = (held - held.shift(1)).abs().fillna(0.0)  # entering at the first weight is free
+    cost = traded * cost_bps / 10_000
+    ret = held * r["risky"] + (1 - held) * r["cash"] - cost
+    ret.iloc[0] = 0.0  # the start date is the base of the NAV
+    w = held
+    nav = start_value * (1 + ret).cumprod()
+    idx = nav.index
+    years = years_between(idx[0], idx[-1])
+    return PortfolioResult(
+        nav=nav.rename(name),
+        weights=pd.DataFrame({risky.name or "risky": w, "cash": 1 - w}, index=idx),
+        turnover=traded[traded > 0],
+        costs=cost[cost > 0],
+        annual_turnover=float(traded.sum() / years),
+        annual_cost=float(cost.sum() / years),
     )

@@ -82,3 +82,64 @@ def test_rebalanced_60_40_sits_between_its_parts():
     p = two_assets()
     res = fixed_weight_portfolio(p, {"A": 0.6, "B": 0.4}, "quarterly")
     assert m.cagr(p["B"]) < m.cagr(res.nav) < m.cagr(p["A"])
+
+
+# --------------------------------------------------------------------------- volatility targeting
+
+from engine.portfolio import cash_from_rate, vol_target_portfolio  # noqa: E402
+
+
+def test_cash_from_rate_accrues_known_rate():
+    idx = pd.to_datetime(["2020-01-01", "2020-01-31", "2020-03-01"])
+    rate = pd.Series([3.6, 7.2], index=pd.to_datetime(["2019-12-31", "2020-01-31"]))
+    c = cash_from_rate(rate, idx)
+    assert c.iloc[0] == 100
+    assert c.iloc[1] == pytest.approx(100 * (1 + 0.036 * 30 / 360))  # rate known at the start
+    assert c.iloc[2] == pytest.approx(c.iloc[1] * (1 + 0.072 * 30 / 360))
+
+
+def _risky_and_cash(vols, seed=1):
+    rng = np.random.default_rng(seed)
+    r = np.concatenate([rng.standard_normal(n) * v / np.sqrt(252) for n, v in vols])
+    idx = pd.bdate_range("2010-01-01", periods=len(r))
+    risky = pd.Series(100 * np.cumprod(1 + r), index=idx, name="X")
+    cash = pd.Series(100.0, index=idx)
+    return risky, cash
+
+
+def test_vol_target_scales_down_in_turbulent_regime():
+    risky, cash = _risky_and_cash([(300, 0.08), (300, 0.40)])
+    res = vol_target_portfolio(risky, cash, target_vol=0.10, lookback=63)
+    w = res.weights["X"]
+    assert w.iloc[200] == pytest.approx(1.0)  # calm: vol < target -> capped at 100%
+    assert 0.15 < w.iloc[-1] < 0.40  # turbulent: ~0.10 / 0.40
+    assert w.max() <= 1.0 and res.nav.index[0] == risky.index[64]  # 63 returns end on day 63; held from day 64
+
+
+def test_vol_target_lag_is_one_day():
+    risky, cash = _risky_and_cash([(200, 0.15)])
+    res = vol_target_portfolio(risky, cash, target_vol=0.10, lookback=20)
+    r = risky.pct_change()
+    sig = (0.10 / (r.rolling(20).std() * np.sqrt(252))).clip(upper=1.0)
+    t = res.nav.index[5]
+    prev = res.nav.index[4]
+    expected = res.nav.loc[prev] * (1 + sig.shift(1).loc[t] * r.loc[t])
+    assert res.nav.loc[t] == pytest.approx(expected)
+
+
+def test_look_ahead_flatters_the_backtest():
+    # Same-day weights know today's turbulence: lag=0 should not be worse on risk-adjusted terms.
+    risky, cash = _risky_and_cash([(250, 0.10), (60, 0.60), (250, 0.10), (60, 0.60), (250, 0.10)], seed=3)
+    honest = vol_target_portfolio(risky, cash, target_vol=0.10, lookback=10, lag=1)
+    cheat = vol_target_portfolio(risky, cash, target_vol=0.10, lookback=10, lag=0)
+    from engine.metrics import annualized_vol
+    common = honest.nav.index.intersection(cheat.nav.index)
+    assert annualized_vol(cheat.nav.loc[common]) < annualized_vol(honest.nav.loc[common])
+
+
+def test_vol_target_costs_reduce_nav():
+    risky, cash = _risky_and_cash([(300, 0.08), (300, 0.40)])
+    free = vol_target_portfolio(risky, cash, cost_bps=0)
+    costly = vol_target_portfolio(risky, cash, cost_bps=20)
+    assert costly.nav.iloc[-1] < free.nav.iloc[-1]
+    assert costly.annual_cost > 0 and costly.annual_turnover == pytest.approx(free.annual_turnover)
