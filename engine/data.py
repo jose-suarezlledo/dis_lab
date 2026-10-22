@@ -9,6 +9,7 @@ data/universe.csv           tickers offered in the apps (name, asset class, curr
 data/prices/<TICKER>.csv    date, close   (adjusted = total-return close, from yfinance)
 data/macro/<SERIES>.csv     date, value   (FRED, as published today, not vintage data)
 data/indexa/...csv          Indexa Capital published profile returns (base 100)
+data/factors/<NAME>.csv     Kenneth French data library: monthly long-short factor returns
 data/manifest.csv           one row per cached file: source, first/last date, download date
 
 Prices are never forward-filled or zero-filled here: a ticker has NaN before
@@ -29,6 +30,7 @@ import pandas as pd
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+FRENCH_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/{name}_CSV.zip"
 
 __all__ = [
     "DATA_DIR",
@@ -47,6 +49,11 @@ __all__ = [
     "CURRENCIES",
     "convert_currency",
     "load_indexa",
+    "FRENCH_FACTORS",
+    "parse_french_csv",
+    "download_french",
+    "save_french",
+    "load_french",
 ]
 
 
@@ -348,3 +355,94 @@ def load_indexa(
     if freq:
         df = df.resample(freq).last()
     return df
+
+
+# --------------------------------------------------------------------------- factors (Ken French)
+
+# Monthly US factor returns from the Kenneth French data library. Each factor is a
+# long-short (zero-investment) portfolio, so its return is an excess return: compound
+# (1 + r) for a "growth of 1" line, and do not subtract the risk-free rate again.
+FRENCH_FACTORS = {
+    "MKT_RF": "Market minus T-bills",
+    "SMB": "Size: small minus big",
+    "HML": "Value: high minus low book-to-market",
+    "RMW": "Profitability: robust minus weak",
+    "CMA": "Investment: conservative minus aggressive",
+    "MOM": "Momentum: past winners minus past losers",
+    "RF": "1-month T-bill return",
+}
+
+# file -> {column in the file: our name}. HML/SMB come from the 3-factor file (from 1926);
+# RMW/CMA only exist in the 5-factor file (from 1963).
+_FRENCH_FILES = {
+    "F-F_Research_Data_Factors": {"Mkt-RF": "MKT_RF", "SMB": "SMB", "HML": "HML", "RF": "RF"},
+    "F-F_Research_Data_5_Factors_2x3": {"RMW": "RMW", "CMA": "CMA"},
+    "F-F_Momentum_Factor": {"Mom": "MOM"},
+}
+
+
+def parse_french_csv(text: str) -> pd.DataFrame:
+    """The monthly block of a Ken French CSV, as decimals with a month-end index.
+
+    The files start with notes, then a header line beginning with a comma, then
+    rows like `192607,   2.89, ...` (percent), then a blank line before the
+    annual block, which is ignored. -99.99 / -999 mean missing.
+    """
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(","))
+    header = [c.strip() for c in lines[start].split(",")[1:]]
+    rows = []
+    for line in lines[start + 1:]:
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts[0]) != 6 or not parts[0].isdigit():
+            break  # end of the monthly block
+        rows.append([parts[0]] + [float(x) for x in parts[1:]])
+    df = pd.DataFrame(rows, columns=["yyyymm"] + header)
+    df.index = pd.PeriodIndex(df.pop("yyyymm"), freq="M").to_timestamp(how="end").normalize()
+    df.index.name = "date"
+    return df.mask(df <= -99.99) / 100.0
+
+
+def download_french() -> pd.DataFrame:
+    """Monthly MKT_RF, SMB, HML, RMW, CMA, MOM, RF (decimals) from the Ken French library."""
+    import zipfile
+
+    out = []
+    for name, cols in _FRENCH_FILES.items():
+        with urllib.request.urlopen(FRENCH_URL.format(name=name), timeout=60) as resp:
+            z = zipfile.ZipFile(io.BytesIO(resp.read()))
+        text = z.read(z.namelist()[0]).decode("latin-1")
+        out.append(parse_french_csv(text)[list(cols)].rename(columns=cols))
+    return pd.concat(out, axis=1)[list(FRENCH_FACTORS)]
+
+
+def save_french(df: pd.DataFrame, name: str = "french_us_monthly", data_dir: Path | str | None = None) -> None:
+    data_dir = _dir(data_dir)
+    folder = data_dir / "factors"
+    folder.mkdir(parents=True, exist_ok=True)
+    df.to_csv(folder / f"{name}.csv", date_format="%Y-%m-%d", float_format="%.6f")
+    _update_manifest(
+        [
+            {
+                "kind": "factors",
+                "id": name,
+                "source": "Kenneth French data library (monthly, US)",
+                "first_date": df.index[0].date(),
+                "last_date": df.index[-1].date(),
+                "rows": len(df),
+                "downloaded": dt.date.today().isoformat(),
+            }
+        ],
+        data_dir,
+    )
+
+
+def load_french(name: str = "french_us_monthly", data_dir: Path | str | None = None) -> pd.DataFrame:
+    """Cached monthly factor returns (decimals), columns as in FRENCH_FACTORS.
+
+    MKT_RF, SMB, HML, MOM, RF start in 1926-27; RMW and CMA in 1963 (NaN before).
+    """
+    path = _dir(data_dir) / "factors" / f"{name}.csv"
+    if not path.exists():
+        raise KeyError(f"{name} not cached; run `py scripts/refresh_data.py`")
+    return pd.read_csv(path, index_col="date", parse_dates=True)

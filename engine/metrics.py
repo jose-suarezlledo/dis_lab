@@ -57,6 +57,8 @@ __all__ = [
     "information_ratio",
     "correlation",
     "capture_ratios",
+    "correlation_matrix",
+    "down_market_table",
     "turnover",
     "rolling_cagr",
     "rolling_vol",
@@ -321,6 +323,40 @@ def capture_ratios(nav: pd.Series, bench: pd.Series) -> tuple[float, float]:
     up_cap = rp[up].mean() / rb[up].mean() if up.any() else np.nan
     down_cap = rp[down].mean() / rb[down].mean() if down.any() else np.nan
     return float(up_cap), float(down_cap)
+
+
+def correlation_matrix(levels: pd.DataFrame, on: str = "returns") -> pd.DataFrame:
+    """Pairwise correlation of aligned level series (sample them first with `to_frequency`).
+
+    on="returns" is the right measure of co-movement. on="levels" correlates the
+    price levels themselves: any two series that trend upwards look highly
+    correlated whatever their day-to-day relation. It exists only to show that bug.
+    """
+    if on == "returns":
+        return levels.pct_change(fill_method=None).iloc[1:].corr()
+    if on == "levels":
+        return levels.corr()
+    raise ValueError("on must be 'returns' or 'levels'")
+
+
+def down_market_table(levels: pd.DataFrame, benchmark: str) -> pd.DataFrame:
+    """How each series did in the periods when the benchmark fell vs rose.
+
+    Columns: average return when the benchmark was down / up (per period), and the
+    share of down periods in which the series lost less than the benchmark.
+    """
+    r = levels.pct_change(fill_method=None).iloc[1:]
+    down, up = r[benchmark] < 0, r[benchmark] > 0
+    out = pd.DataFrame(
+        {
+            "avg_when_bench_down": r[down].mean(),
+            "avg_when_bench_up": r[up].mean(),
+            "beat_bench_when_down": r[down].gt(r.loc[down, benchmark], axis=0).mean(),
+        }
+    )
+    out.attrs["down_periods"] = int(down.sum())
+    out.attrs["up_periods"] = int(up.sum())
+    return out
 
 
 # --------------------------------------------------------------------------- implementation

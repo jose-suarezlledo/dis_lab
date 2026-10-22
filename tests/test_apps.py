@@ -25,15 +25,43 @@ def app():
 def test_default_scenario_renders(app):
     assert not app.error
     assert any("Common window" in md.value for md in app.markdown)
-    assert len(app.tabs) == 7
+    assert len(app.tabs) == 8
+    assert app.radio(key="session").value == "Session 1"
 
 
-@pytest.mark.parametrize("index", range(5))
-def test_every_scenario_renders(app, index):
+@pytest.mark.parametrize("session,index", [("Session 1", i) for i in range(5)] + [("Session 2", i) for i in range(6)])
+def test_every_scenario_renders(app, session, index):
+    if session != app.radio(key="session").value:
+        app.radio(key="session").set_value(session)
+        run(app)
     sb = app.selectbox(key="scenario")
     sb.set_value(sb.options[index])
     run(app)
     assert not app.error, [e.value for e in app.error]
+    assert not app.warning or all("Fewer than" not in w.value for w in app.warning)
+
+
+def test_session_link_opens_session_2():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["session"] = "2"
+    run(at)
+    assert at.radio(key="session").value == "Session 2"
+    assert at.selectbox(key="scenario").value.startswith("Claim: equal weight")
+
+
+def test_correlation_toggle_shows_the_price_level_bug():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["session"] = "2"
+    run(at)
+    at.selectbox(key="scenario").set_value("Claim: factors beat the market")
+    run(at)
+    cap = " ".join(c.value for c in at.caption if "Average pairwise" in c.value)
+    on_ret = float(cap.split("**")[1].split(" on returns")[0])
+    on_lvl = float(cap.split(" vs ")[1].split(" on price levels")[0])
+    assert on_lvl > on_ret  # trending levels inflate correlation
+    at.radio(key="corr_on").set_value("levels")
+    run(at)
+    assert not at.error
 
 
 @pytest.mark.parametrize("currency", ["EUR", "USD", "As listed"])

@@ -36,6 +36,7 @@ SHARPE_ALARM = 1.5
 CAGR_ALARM = 0.25
 MIN_YEARS = 10
 MIN_BENCH_CORR = 0.6
+RULE_BASED_CLASSES = ("Smart beta", "Factor equity", "Multi-factor", "Thematic", "Alternative")
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,21 @@ def performance_checks(
     if special:
         detail += f" This matters most for {', '.join(special)}: few people held them through the whole window."
     out.append(Check("info", 2, "Picked with hindsight", detail))
+
+    # 3. Products built from a backtest: smart beta, factors, themes, liquid alternatives.
+    built = [c for c in cols if asset_class.get(c) in RULE_BASED_CLASSES]
+    if built:
+        out.append(Check("info", 3, f"Rule-based products: you see the live record only ({', '.join(built)})",
+                         "Index rules are designed on past data, and products launch after the rule has "
+                         "backtested well. Indices have tended to beat the market before their ETF launched "
+                         "and not after (Vanguard, 2012). Judge the post-launch record against a plain index, "
+                         "net of the higher fee."))
+    themes = [c for c in cols if asset_class.get(c) == "Thematic"]
+    if themes:
+        out.append(Check("warn", 2, f"Themes are launched after they have run ({', '.join(themes)})",
+                         "Thematic funds appear and gather money when a theme is already popular and "
+                         "expensive. Ask whether you would have picked this theme at the start of the "
+                         "window, and how many similar funds have since closed."))
 
     # Currency mix.
     ccy = {listing_currency[c] for c in cols if c in listing_currency}

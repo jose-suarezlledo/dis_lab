@@ -43,5 +43,27 @@ SXR8.DE,iShares Core S&P 500 (Acc),US equity,EUR,Y,UCITS; Xetra EUR line
 IS3N.DE,iShares Core MSCI EM IMI (Acc),Intl equity,EUR,Y,UCITS; Xetra EUR line
 EUNH.DE,iShares Core Euro Government Bond,Bonds,EUR,Y,UCITS; euro-area government bonds
 4GLD.DE,Xetra-Gold,Commodities,EUR,N,Physically backed gold (ETC) in EUR
+RSP,Invesco S&P 500 Equal Weight,Smart beta,USD,N,S&P 500 stocks at equal weights (rebalanced quarterly)
+PRF,Invesco RAFI US 1000,Smart beta,USD,N,Fundamentally weighted (sales/cash flow/book/dividends)
+SPLV,Invesco S&P 500 Low Volatility,Factor equity,USD,N,100 least volatile S&P 500 stocks
+SIZE,iShares MSCI USA Size Factor,Factor equity,USD,N,Size factor (tilts to smaller large caps)
+IWD,iShares Russell 1000 Value,Factor equity,USD,N,Value half of US large and mid caps
+IWF,iShares Russell 1000 Growth,Factor equity,USD,N,Growth half of US large and mid caps
+LRGF,iShares U.S. Equity Factor,Multi-factor,USD,N,Static multi-factor (value/quality/momentum/size/low vol)
+GSLC,Goldman Sachs ActiveBeta US Large Cap,Multi-factor,USD,N,Static multi-factor (value/momentum/quality/low vol)
+QVML,Invesco S&P 500 QVM Multi-factor,Multi-factor,USD,N,Quality/value/momentum S&P 500 (launched 2021)
+DYNF,iShares U.S. Equity Factor Rotation Active,Multi-factor,USD,N,Active factor rotation (factor timing)
+DBMF,iMGP DBi Managed Futures Strategy,Alternative,USD,N,Managed futures (replicates CTA hedge funds)
+QAI,NYLI Hedge Multi-Strategy Tracker,Alternative,USD,N,Hedge-fund replication
+JEPI,JPMorgan Equity Premium Income,Alternative,USD,N,Low-vol stocks + covered calls (option income)
+HACK,Amplify Cybersecurity,Thematic,USD,N,Cybersecurity theme (first launched 2014)
+ARKK,ARK Innovation,Thematic,USD,N,Actively managed disruptive-innovation theme
+BOTZ,Global X Robotics & Artificial Intelligence,Thematic,USD,N,Robotics and AI theme
+IWMO.L,iShares Edge MSCI World Momentum Factor (Acc),Factor equity,USD,Y,UCITS; London USD line (Yahoo's Xetra line IS3R.DE has bad ticks)
+IWQU.L,iShares Edge MSCI World Quality Factor (Acc),Factor equity,USD,Y,UCITS; London USD line (Yahoo's Xetra line IS3Q.DE has bad ticks)
+IWVL.L,iShares Edge MSCI World Value Factor (Acc),Factor equity,USD,Y,UCITS; London USD line (Yahoo's Xetra line IS3S.DE has bad ticks)
+MVOL.L,iShares Edge MSCI World Minimum Volatility (Acc),Factor equity,USD,Y,UCITS; London USD line (Yahoo's Xetra line IQQ0.DE has bad ticks)
+IFSW.L,iShares STOXX World Equity Multifactor (Acc),Multi-factor,USD,Y,UCITS; London USD line (was MSCI World Diversified Multiple-Factor)
+XDEW.DE,Xtrackers S&P 500 Equal Weight (Acc),Smart beta,EUR,Y,UCITS; Xetra EUR line
 BTC-USD,Bitcoin,Crypto,USD,N,Trades 7 days a week
 EURUSD=X,EUR/USD exchange rate,FX,USD,N,USD per 1 EUR

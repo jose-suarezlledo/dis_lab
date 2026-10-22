@@ -1,6 +1,6 @@
 """Refresh the data snapshots in data/ (the only script that downloads anything).
 
-    py scripts/refresh_data.py              # every ticker in data/universe.csv + FRED series
+    py scripts/refresh_data.py              # every ticker in data/universe.csv + FRED series + Ken French factors
     py scripts/refresh_data.py SPY AGG      # just these tickers (must be in universe.csv)
 
 Commit the updated CSVs and data/manifest.csv afterwards, so that the apps on
@@ -46,6 +46,9 @@ def main(argv: list[str]) -> int:
             s = data.download_fred(sid)
             data.save_fred(s)
             print(f"  FRED {sid:6s} {s.index[0].date()} -> {s.index[-1].date()}  {label}")
+        f = data.download_french()
+        data.save_french(f)
+        print(f"  Ken French factors {f.index[0].date()} -> {f.index[-1].date()}  {list(f.columns)}")
     return 1 if prices.attrs.get("failed") else 0
 
 

@@ -51,7 +51,9 @@ LAST_DAY = PRICES.index[-1].date()
 
 # --------------------------------------------------------------------------- scenarios
 
-SCENARIOS = {
+CUSTOM = "Custom (keep my settings)"
+
+SESSION_1 = {
     "Stocks, bonds and a 60/40 mix (since 1987)": dict(
         assets=["VFINX", "VBMFX"], benchmark="VFINX", portfolio=[("VFINX", 60), ("VBMFX", 40)],
         rebalance="monthly", cost=5, start=dt.date(1987, 1, 1), currency="As listed", freq="daily",
@@ -82,9 +84,59 @@ SCENARIOS = {
         question="Same index exposure, different products and currencies. Switch the currency to "
                  "'As listed': what changes, and why?",
     ),
-    "Custom (keep my settings)": None,
+    CUSTOM: None,
 }
-DEFAULT_SCENARIO = next(iter(SCENARIOS))
+
+# Session 2: each station is a marketing claim about a smart-beta product, to verify.
+SESSION_2 = {
+    "Claim: equal weight beats the cap-weighted S&P 500": dict(
+        assets=["RSP", "SPY"], benchmark="SPY", portfolio=None,
+        start=dt.date(2003, 5, 1), currency="As listed", freq="daily",
+        question="Check the full window. Then set 'To' = 2022-12-31, and after that 'From' = 2023-01-01. "
+                 "What would a brochure printed in 2022 have said, and one printed today? Why did it flip?",
+    ),
+    "Claim: factors beat the market": dict(
+        assets=["MTUM", "QUAL", "USMV", "VLUE", "SIZE"], benchmark="SPY", portfolio=None,
+        start=dt.date(2013, 7, 31), currency="As listed", freq="daily",
+        question="Which factor won each calendar year? How many beat SPY over the whole window, and is the "
+                 "gap bigger than the noise (Sharpe ±)? In the Diversification tab: which one cushioned "
+                 "the falls, and do these ETFs really diversify each other?",
+    ),
+    "Claim: multi-factor and factor rotation give you the best of all factors": dict(
+        assets=["LRGF", "GSLC", "DYNF"], benchmark="SPY", portfolio=None,
+        start=dt.date(2019, 3, 21), currency="As listed", freq="daily",
+        question="LRGF and GSLC hold several factors at fixed weights; DYNF rotates between them. Compare "
+                 "each with SPY: tracking error, information ratio, correlation. Then remove DYNF and start "
+                 "in 2015. Is any gap bigger than luck would produce?",
+    ),
+    "Claim: alternative ETFs give you hedge-fund diversification": dict(
+        assets=["SPY", "DBMF", "QAI", "JEPI"], benchmark="AOR",
+        portfolio=[("AOR", 80), ("DBMF", 20)], rebalance="monthly", cost=10,
+        start=dt.date(2020, 5, 21), currency="As listed", freq="weekly",
+        question="Managed futures (DBMF), hedge-fund replication (QAI) and option income (JEPI) against a "
+                 "60/40 fund (AOR). Which one zigged when stocks fell in 2022 and 2025? Does adding 20% of "
+                 "it to the 60/40 help, after its fee?",
+    ),
+    "Euro investor: UCITS factor ETFs vs MSCI World": dict(
+        assets=["IWMO.L", "IWQU.L", "IWVL.L", "MVOL.L", "IFSW.L"], benchmark="IWDA.AS", portfolio=None,
+        start=dt.date(2015, 9, 4), currency="EUR", freq="weekly",
+        question="iShares' world momentum, quality, value, minimum-volatility and multi-factor UCITS ETFs, "
+                 "in euros, against the plain MSCI World ETF. Which ones earned their higher fee (about 0.30% "
+                 "a year vs 0.20%)? Check the calendar years: was the winner the same every year?",
+    ),
+    "Themes: robots, cybersecurity, innovation": dict(
+        assets=["BOTZ", "HACK", "ARKK"], benchmark="QQQ", portfolio=None,
+        start=dt.date(2016, 9, 13), currency="As listed", freq="daily",
+        question="Three of the best-known thematic ETFs against the Nasdaq-100. Look at max drawdown and time "
+                 "under water, then start the window in 2020-03-23 and in 2021-02-12 (ARKK's peak). When did "
+                 "the money flow in?",
+    ),
+    CUSTOM: None,
+}
+
+SESSIONS = {"Session 1": SESSION_1, "Session 2": SESSION_2}
+SCENARIOS = {k: v for sess in SESSIONS.values() for k, v in sess.items()}
+DEFAULT_SESSION = "Session 1"
 
 
 def apply_scenario() -> None:
@@ -106,8 +158,20 @@ def apply_scenario() -> None:
     ss.freq = sc["freq"]
 
 
+def first_scenario(session: str) -> str:
+    return next(iter(SESSIONS[session]))
+
+
+def change_session() -> None:
+    st.session_state.scenario = first_scenario(st.session_state.session)
+    apply_scenario()
+
+
 if "scenario" not in st.session_state:
-    st.session_state.scenario = DEFAULT_SCENARIO
+    # A class link can open a session directly: ...streamlit.app/?session=2
+    wanted = f"Session {st.query_params.get('session', '')}"
+    st.session_state.session = wanted if wanted in SESSIONS else DEFAULT_SESSION
+    st.session_state.scenario = first_scenario(st.session_state.session)
     st.session_state.rf_mode = "Auto"
     st.session_state.rf_custom = 2.0
     st.session_state.colors = {}
@@ -122,7 +186,10 @@ def label(t: str) -> str:
 
 with st.sidebar:
     st.header("Set up the comparison")
-    st.selectbox("Scenario", list(SCENARIOS), key="scenario", on_change=apply_scenario,
+    st.radio("Class", list(SESSIONS), key="session", horizontal=True, on_change=change_session,
+             help="Which session's scenarios to list below.")
+    st.selectbox("Scenario", list(SESSIONS[st.session_state.session]), key="scenario",
+                 on_change=apply_scenario,
                  help="Loads a ready-made comparison used in class. Then change anything you like.")
     st.multiselect("Funds / ETFs to compare", list(UNI.index), key="assets", format_func=label,
                    max_selections=MAX_ASSETS,
@@ -334,7 +401,8 @@ def color_of(c: str) -> str:
 # --------------------------------------------------------------------------- tabs
 
 tabs = st.tabs(["Growth & drawdowns", "All metrics", "Calendar years & crises", "Rolling view",
-                "How returns behave", f"What could be wrong here ({len(warns)})", "How this works"])
+                "Diversification", "How returns behave", f"What could be wrong here ({len(warns)})",
+                "How this works"])
 
 with tabs[0]:
     st.dataframe(display_table(["cagr", "vol", "sharpe", "max_dd", "tuw_days"]), width="stretch")
@@ -366,20 +434,7 @@ with tabs[1]:
     with st.expander("What each metric means, and its trap", expanded=False):
         st.dataframe(ui.glossary_table(SHOWN), hide_index=True, width="stretch")
 
-    if len(levels.columns) > 2:
-        names = list(levels.columns)
-        corr = pd.DataFrame([[m.correlation(levels[a], levels[b]) if a != b else 1.0 for b in names] for a in names],
-                            index=names, columns=names)
-        fig = go.Figure(go.Heatmap(z=corr.to_numpy(), x=names, y=names, zmin=-1, zmax=1,
-                                   colorscale=ui.DIVERGING_SCALE, text=corr.map(lambda v: f"{v:.2f}").to_numpy(),
-                                   texttemplate="%{text}", hovertemplate="%{y} vs %{x}: %{z:.2f}<extra></extra>",
-                                   xgap=2, ygap=2))
-        fig.update_layout(height=120 + 45 * len(names), margin=dict(l=10, r=10, t=50, b=10),
-                          title=dict(text=f"Correlation of {freq} returns", x=0, font=dict(size=15)),
-                          yaxis=dict(autorange="reversed"))
-        st.plotly_chart(fig, width="stretch")
-        st.caption("Blue = move together, red = move in opposite directions, grey = unrelated. "
-                   "Diversification comes from the grey and red cells.")
+    st.caption("Correlations and how each series did when the benchmark fell: tab *Diversification*.")
 
 with tabs[2]:
     yr = pd.DataFrame({c: m.calendar_year_returns(levels[c])["return"] for c in levels.columns})
@@ -431,6 +486,46 @@ with tabs[3]:
                        "positive in 2022, when both fell together.")
 
 with tabs[4]:
+    names = list(levels.columns)
+    if len(names) < 2:
+        st.info("Add at least one more series to see how they move together.")
+    else:
+        on = st.radio("Correlate", ["returns", "levels"], horizontal=True, key="corr_on",
+                      format_func=lambda v: f"{freq} returns (right)" if v == "returns"
+                      else "price levels (the classic bug)",
+                      help="Diversification depends on whether returns move together. Correlating price "
+                           "levels measures shared trends instead: any two assets that rose over the "
+                           "window look 'correlated'.")
+        corr = m.correlation_matrix(levels, on)
+        fig = go.Figure(go.Heatmap(z=corr.to_numpy(), x=names, y=names, zmin=-1, zmax=1,
+                                   colorscale=ui.DIVERGING_SCALE, text=corr.map(lambda v: f"{v:.2f}").to_numpy(),
+                                   texttemplate="%{text}", hovertemplate="%{y} vs %{x}: %{z:.2f}<extra></extra>",
+                                   xgap=2, ygap=2))
+        title = f"Correlation of {freq} returns" if on == "returns" else "Correlation of price levels (wrong measure)"
+        fig.update_layout(height=120 + 45 * len(names), margin=dict(l=10, r=10, t=50, b=10),
+                          title=dict(text=title, x=0, font=dict(size=15)), yaxis=dict(autorange="reversed"))
+        st.plotly_chart(fig, width="stretch")
+        off = ~np.eye(len(names), dtype=bool)
+        avg_r = m.correlation_matrix(levels, "returns").to_numpy()[off].mean()
+        avg_l = m.correlation_matrix(levels, "levels").to_numpy()[off].mean()
+        st.caption(f"Blue = move together, red = opposite directions, grey = unrelated. Average pairwise "
+                   f"correlation: **{avg_r:.2f} on returns** vs {avg_l:.2f} on price levels. "
+                   "Diversification comes from the grey and red cells, measured on returns.")
+
+        st.subheader(f"When {bench} fell")
+        mo = m.to_frequency(daily, "monthly") if freq == "daily" else levels
+        unit = "month" if freq in ("daily", "monthly") else "week"
+        dm = m.down_market_table(mo, bench)
+        st.dataframe(pd.DataFrame({
+            f"Average {unit} when {bench} fell": dm["avg_when_bench_down"].map(ui.pct),
+            f"Average {unit} when {bench} rose": dm["avg_when_bench_up"].map(ui.pct),
+            f"Lost less than {bench} (share of its down {unit}s)": dm["beat_bench_when_down"].map(lambda v: f"{v:.0%}"),
+        }, index=[f"{c} (benchmark)" if c == bench else c for c in dm.index]), width="stretch")
+        st.caption(f"{dm.attrs['down_periods']} down {unit}s and {dm.attrs['up_periods']} up {unit}s for "
+                   f"{bench} in this window. A diversifier loses less in the down {unit}s; most long-only "
+                   "factor ETFs fall almost as much as the market.")
+
+with tabs[5]:
     st.markdown("Real returns are not the bell curve of textbooks. Pick one series (daily returns).")
     pick = st.selectbox("Series", list(daily.columns), index=list(daily.columns).index(bench),
                         format_func=lambda c: f"{c} (benchmark)" if c == bench else c)
@@ -515,7 +610,7 @@ with tabs[4]:
                "turbulent weeks, so nobody misses only the best ones. The real lesson is about volatility "
                "regimes, not about never selling.")
 
-with tabs[5]:
+with tabs[6]:
     st.markdown("Automatic checks against the course's **bias checklist**. A warning does not mean the "
                 "numbers are wrong; it means you should know why they might be before you act on them.")
     for c in checks:
@@ -533,7 +628,7 @@ with tabs[5]:
 7. **Regime dependence:** does it hold in 2000–02, 2008, 2020 and 2022, or only on average?
 """)
 
-with tabs[6]:
+with tabs[7]:
     st.markdown(f"""
 **What this tool does, in plain English**
 1. Takes the daily closing prices of the products you picked, adjusted for dividends and splits

@@ -69,3 +69,14 @@ def test_window_cut_by_youngest_series():
 def test_warnings_come_first():
     sev = [c.severity for c in performance_checks(levels("2023-01-02", "2024-12-31"))]
     assert sev == sorted(sev, key=lambda s: s != "warn")
+
+
+def test_rule_based_and_thematic_products():
+    lv = levels("2005-01-03", "2024-12-31", cols=("SPY", "MTUM", "ARKK"))
+    cls = {"SPY": "US equity", "MTUM": "Factor equity", "ARKK": "Thematic"}
+    out = performance_checks(lv, benchmark="SPY", asset_class=cls)
+    live = [c for c in out if c.title.startswith("Rule-based products")]
+    assert len(live) == 1 and "MTUM" in live[0].title and "ARKK" in live[0].title and "SPY" not in live[0].title
+    assert any(c.severity == "warn" and "Themes" in c.title for c in out)
+    plain = performance_checks(lv, benchmark="SPY", asset_class={c: "US equity" for c in lv})
+    assert not any("Rule-based" in t or "Themes" in t for t in titles(plain))
