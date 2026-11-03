@@ -136,6 +136,12 @@ def performance_checks(
                          "backtested well. Indices tracked by ETFs beat the market in their back-filled history "
                          "and not once live (Vanguard, 2012). Judge the post-launch record against a plain index, "
                          "net of the higher fee."))
+    robos = [c for c in cols if asset_class.get(c) == "Robo-advisor"]
+    if robos:
+        out.append(Check("info", 2, f"Published by the provider ({', '.join(robos)})",
+                         "A robo-advisor's track record is its own calculation for one account tier, net of its "
+                         "fees, for the profiles it still offers. Check the tier and dates against the provider's "
+                         "page, and remember that providers that closed are not in any such table."))
     themes = [c for c in cols if asset_class.get(c) == "Thematic"]
     if themes:
         out.append(Check("warn", 2, f"Themes are launched after they have run ({', '.join(themes)})",

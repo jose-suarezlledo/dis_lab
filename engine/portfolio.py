@@ -23,8 +23,8 @@ import pandas as pd
 
 from .metrics import align, to_returns, years_between
 
-__all__ = ["REBALANCE_FREQUENCIES", "PortfolioResult", "fixed_weight_portfolio", "cash_from_rate",
-           "vol_target_portfolio"]
+__all__ = ["REBALANCE_FREQUENCIES", "PortfolioResult", "fixed_weight_portfolio", "drift_band_portfolio",
+           "apply_fee", "cash_from_rate", "vol_target_portfolio"]
 
 # label -> pandas Period alias (None = never rebalance, weights drift forever)
 REBALANCE_FREQUENCIES = {"none": None, "monthly": "M", "quarterly": "Q", "yearly": "Y"}
@@ -65,18 +65,7 @@ def fixed_weight_portfolio(
     """
     if rebalance not in REBALANCE_FREQUENCIES:
         raise ValueError(f"rebalance must be one of {list(REBALANCE_FREQUENCIES)}")
-    if not weights:
-        raise ValueError("weights is empty")
-    missing = [t for t in weights if t not in prices.columns]
-    if missing:
-        raise KeyError(f"no prices for {missing}")
-    w = pd.Series(weights, dtype=float)
-    if (w < 0).any():
-        raise ValueError("weights must be non-negative (long-only)")
-    if abs(w.sum() - 1) > 1e-6:
-        raise ValueError(f"weights must sum to 1, got {w.sum():.4f}")
-    if cost_bps < 0:
-        raise ValueError("cost_bps must be non-negative")
+    w = _validated_weights(prices, weights, cost_bps)
 
     levels = align(*[prices[t] for t in w.index])
     if len(levels) < 3:
@@ -118,6 +107,117 @@ def fixed_weight_portfolio(
         annual_turnover=float(turnover.sum() / years),
         annual_cost=float(costs.sum() / years),
     )
+
+
+# --------------------------------------------------------------------------- drift-band rebalancing
+
+
+def _validated_weights(prices: pd.DataFrame, weights: dict[str, float], cost_bps: float) -> pd.Series:
+    if not weights:
+        raise ValueError("weights is empty")
+    missing = [t for t in weights if t not in prices.columns]
+    if missing:
+        raise KeyError(f"no prices for {missing}")
+    w = pd.Series(weights, dtype=float)
+    if (w < 0).any():
+        raise ValueError("weights must be non-negative (long-only)")
+    if abs(w.sum() - 1) > 1e-6:
+        raise ValueError(f"weights must sum to 1, got {w.sum():.4f}")
+    if cost_bps < 0:
+        raise ValueError("cost_bps must be non-negative")
+    return w
+
+
+def drift_band_portfolio(
+    prices: pd.DataFrame,
+    weights: dict[str, float],
+    band: float = 0.05,
+    check: str = "monthly",
+    cost_bps: float = 0.0,
+    start_value: float = 100.0,
+    name: str = "Portfolio",
+) -> PortfolioResult:
+    """Rebalance to target only when a weight has drifted more than `band` from it.
+
+    This is how most robo-advisors rebalance ("threshold" or "tolerance band"
+    rebalancing): the portfolio is checked on each check date (the last trading day
+    of each month / quarter / year, or every day with check="daily"), and reset to the
+    target weights only if any constituent is more than `band` (in weight points, e.g.
+    0.05 = 5 points) away from its target. Otherwise nothing is traded. The final date
+    of the sample is never a check. Costs as in `fixed_weight_portfolio`.
+    """
+    if check == "daily":
+        freq = "daily"
+    elif check in REBALANCE_FREQUENCIES and REBALANCE_FREQUENCIES[check] is not None:
+        freq = REBALANCE_FREQUENCIES[check]
+    else:
+        raise ValueError("check must be 'daily', 'monthly', 'quarterly' or 'yearly'")
+    if not 0 <= band < 1:
+        raise ValueError("band must be a weight fraction in [0, 1)")
+    w = _validated_weights(prices, weights, cost_bps)
+
+    levels = align(*[prices[t] for t in w.index])
+    if len(levels) < 3:
+        raise ValueError("the constituents share fewer than 3 dates")
+    rets = to_returns(levels).to_numpy()
+    target = w.to_numpy()
+    if freq == "daily":
+        checks = np.ones(len(levels), dtype=bool)
+        checks[-1] = False
+    else:
+        checks = _rebalance_mask(levels.index, freq)
+    cost_rate = cost_bps / 10_000
+
+    n = len(levels)
+    nav = np.empty(n)
+    w_hist = np.empty((n, len(target)))
+    turn = np.zeros(n)
+    cost = np.zeros(n)
+    rebal = np.zeros(n, dtype=bool)
+    holdings = target * start_value
+    nav[0], w_hist[0] = start_value, target
+    for t in range(1, n):
+        holdings = holdings * (1 + rets[t - 1])
+        value = holdings.sum()
+        drifted = holdings / value
+        if checks[t] and np.abs(drifted - target).max() > band:
+            traded = np.abs(target - drifted).sum()
+            turn[t] = 0.5 * traded
+            cost[t] = traded * cost_rate
+            value *= 1 - cost[t]
+            holdings = target * value
+            rebal[t] = True
+        nav[t] = value
+        w_hist[t] = holdings / value
+
+    idx = levels.index
+    years = years_between(idx[0], idx[-1])
+    turnover = pd.Series(turn, index=idx)[rebal]
+    costs = pd.Series(cost, index=idx)[rebal]
+    return PortfolioResult(
+        nav=pd.Series(nav, index=idx, name=name),
+        weights=pd.DataFrame(w_hist, index=idx, columns=w.index),
+        turnover=turnover,
+        costs=costs,
+        annual_turnover=float(turnover.sum() / years),
+        annual_cost=float(costs.sum() / years),
+    )
+
+
+def apply_fee(nav: pd.Series, annual_fee: float) -> pd.Series:
+    """NAV net of a fee charged as a constant % per year of assets, accrued by calendar days.
+
+    This is how an advisory or management fee (and a fund's TER) hits an investor:
+    a steady drag of `annual_fee` × (days / 365.25) per period, compounded. The first
+    date is the base and pays nothing. Fund prices from Yahoo are already net of the
+    fund's own TER, so apply only the *extra* layers here (advisory + custody).
+    """
+    if annual_fee < 0:
+        raise ValueError("annual_fee must be non-negative")
+    s = nav.dropna()
+    days = s.index.to_series().diff().dt.days.fillna(0).to_numpy()
+    drag = np.cumprod(1 - annual_fee * days / 365.25)
+    return pd.Series(s.to_numpy() * drag, index=s.index, name=s.name)
 
 
 # --------------------------------------------------------------------------- volatility targeting

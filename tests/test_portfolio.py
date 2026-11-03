@@ -143,3 +143,44 @@ def test_vol_target_costs_reduce_nav():
     costly = vol_target_portfolio(risky, cash, cost_bps=20)
     assert costly.nav.iloc[-1] < free.nav.iloc[-1]
     assert costly.annual_cost > 0 and costly.annual_turnover == pytest.approx(free.annual_turnover)
+
+
+# --------------------------------------------------------------------------- drift bands and fees
+
+from engine.portfolio import apply_fee, drift_band_portfolio  # noqa: E402
+
+
+def test_zero_band_monthly_equals_calendar_rebalancing():
+    p = two_assets()
+    band = drift_band_portfolio(p, {"A": 0.6, "B": 0.4}, band=0.0, check="monthly", cost_bps=10)
+    cal = fixed_weight_portfolio(p, {"A": 0.6, "B": 0.4}, rebalance="monthly", cost_bps=10)
+    np.testing.assert_allclose(band.nav.to_numpy(), cal.nav.to_numpy())
+    assert set(band.turnover.index) == set(cal.turnover.index)
+
+
+def test_wide_band_never_trades_and_equals_buy_and_hold():
+    p = two_assets()
+    band = drift_band_portfolio(p, {"A": 0.5, "B": 0.5}, band=0.5, check="daily")
+    hold = fixed_weight_portfolio(p, {"A": 0.5, "B": 0.5}, rebalance="none")
+    np.testing.assert_allclose(band.nav.to_numpy(), hold.nav.to_numpy())
+    assert band.turnover.empty
+
+
+def test_band_trades_only_when_crossed():
+    idx = pd.bdate_range("2024-01-01", periods=70)
+    a = np.full(70, 100.0)
+    a[40:] = 130.0  # A jumps 30% on day 40: weight 0.5 -> 0.565, beyond a 5-point band
+    p = pd.DataFrame({"A": a, "B": np.full(70, 100.0)}, index=idx)
+    res = drift_band_portfolio(p, {"A": 0.5, "B": 0.5}, band=0.05, check="daily", cost_bps=0)
+    assert list(res.turnover.index) == [idx[40]]
+    np.testing.assert_allclose(res.weights["A"].iloc[41:], 0.5)
+
+
+def test_apply_fee_accrues_by_calendar_days():
+    idx = pd.to_datetime(["2024-01-01", "2024-07-01", "2025-01-01"])
+    nav = pd.Series([100.0, 100.0, 100.0], index=idx)
+    net = apply_fee(nav, 0.01)
+    assert net.iloc[0] == 100
+    assert net.iloc[-1] == pytest.approx(100 * (1 - 0.01 * 182 / 365.25) * (1 - 0.01 * 184 / 365.25))
+    with pytest.raises(ValueError):
+        apply_fee(nav, -0.01)

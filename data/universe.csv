@@ -67,3 +67,8 @@ IFSW.L,iShares STOXX World Equity Multifactor (Acc),Multi-factor,USD,Y,UCITS; Lo
 XDEW.DE,Xtrackers S&P 500 Equal Weight (Acc),Smart beta,EUR,Y,UCITS; Xetra EUR line
 BTC-USD,Bitcoin,Crypto,USD,N,Trades 7 days a week
 EURUSD=X,EUR/USD exchange rate,FX,USD,N,USD per 1 EUR
+IWDE.L,iShares MSCI World EUR Hedged (Acc),Global equity,EUR,Y,UCITS; London EUR line; currency-hedged to EUR (Session 3)
+EUNA.DE,iShares Core Global Aggregate Bond EUR Hedged (Acc),Bonds,EUR,Y,UCITS; global investment-grade bonds hedged to EUR (Session 3)
+XG7S.DE,Xtrackers Global Government Bond EUR Hedged,Bonds,EUR,Y,UCITS; G7 government bonds hedged to EUR (Session 3)
+XEON.DE,Xtrackers EUR Overnight Rate Swap,Cash,EUR,Y,UCITS; euro cash at the overnight rate (Session 3)
+V60A.DE,Vanguard LifeStrategy 60% Equity (Acc),Multi-asset,EUR,Y,UCITS; one-fund 60/40 world portfolio (from Dec 2020; Session 3)

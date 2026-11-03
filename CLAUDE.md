@@ -4,43 +4,47 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 
 **Repo:** https://github.com/jose-suarezlledo/dis_lab (public, `main`). Push only as `jose-suarezlledo`. Check with `gh api user --jq .login`, never the fund's `Global-Gradient` account.
 
-## Status (22 Oct 2026)
-- **Engine v0.3** (Session 2 additions marked S2):
-  - `engine/metrics.py`: all §7 metrics, benchmark-relative metrics, turnover, rolling CAGR/vol/correlation, `to_frequency` (daily/weekly/monthly), `sharpe_standard_error` (Lo 2002), `STRESS_EPISODES` + `episode_returns`, `summary()` / `summary_table()`.
-  - `engine/data.py`: cache, downloaders, `risk_free_rate()`, `convert_currency()` (USD/EUR via Fed DEXUSEU), `load_indexa()`.
-  - `engine/portfolio.py`: `fixed_weight_portfolio()` (target weights, drift, period-end rebalancing, costs on traded value, turnover). Seed of the backtest engine. S2: `cash_from_rate()` (cash NAV from a quoted rate, e.g. DTB3) and `vol_target_portfolio()` (weight = min(target / trailing vol, cap), set at the close and applied the next day; `lag=0` reproduces look-ahead for teaching).
-  - S2: `engine/factors.py`: growth, annualized and rolling returns, decade table and worst drawdown of monthly long-short factor returns. `data.load_french()` / `download_french()`: Ken French US factors (MKT_RF, SMB, HML, RMW, CMA, MOM, RF) since 1926, `data/factors/french_us_monthly.csv`.
-  - S2: `metrics.correlation_matrix(levels, on='returns'|'levels')` (levels only to show the bug) and `metrics.down_market_table()`.
-  - `engine/stylized.py`: return moments, fat tails vs normal (`tail_counts`), autocorrelation of returns and |returns|, volatility drag, missing best/worst days.
-  - `engine/checks.py`: `performance_checks()`, the automatic "what could be wrong here" list mapped to the §7 bias checklist. S2: notes for rule-based products (live record only; pre-launch backtests) and a warning for thematic funds.
-- **Apps:** `apps/performance_analyzer.py` (toolkit #1); shared `apps/dis_ui.py` (palette, formats, glossary). Scenarios are grouped by class session (sidebar radio `Class`; `?session=2` in the URL opens Session 2): 5 for S1, 6 for S2 (equal weight, single factors, multi-factor/rotation, alternatives, UCITS factors in EUR, themes). New **Diversification** tab: correlation matrix with a returns / price-levels toggle, and how each series did when the benchmark fell (the heatmap moved there from All metrics).
-- **Data snapshot:** 68 tickers to 13 Oct 2026 (S2 added 22 on 21 Oct, downloaded then and cut to the same end date), FRED DTB3/DGS10/DEXUSEU/IR3TIB01EZM156N, Indexa profiles, Ken French factors to Aug 2026.
-- **Tests:** 112 passing (22 Oct 2026) (`py -m pytest`), including AppTest smoke tests of every scenario × currency × frequency. Also verified under pandas 3.0.6 + Streamlit 1.66 (what Streamlit Cloud installs).
-- **Not built yet:** signal-based backtest engine (weights from signals, shifted one period), PSR/DSR, walk-forward, notebooks.
+## Status (3 Nov 2026)
+- **Engine v0.4** (Session 3 additions marked S3):
+  - `engine/metrics.py`: all §7 metrics, benchmark-relative metrics, turnover, rolling CAGR/vol/correlation, `to_frequency`, `sharpe_standard_error` (Lo 2002), `STRESS_EPISODES` + `episode_returns`, `summary()` / `summary_table()`, `correlation_matrix(on='returns'|'levels')`, `down_market_table()`. S3: `time_under_water` no longer trips a FutureWarning on int-named series.
+  - `engine/data.py`: cache, downloaders, `risk_free_rate()`, `convert_currency()` (USD/EUR via Fed DEXUSEU), `load_indexa()`, Ken French loaders.
+  - `engine/portfolio.py`: `fixed_weight_portfolio()`, `cash_from_rate()`, `vol_target_portfolio()`. S3: `drift_band_portfolio()` (reset to target only when a weight drifts beyond ±band, checked daily/monthly/quarterly/yearly; costs and turnover) and `apply_fee()` (annual fee accrued by calendar days).
+  - S3: `engine/fx.py`: `hedged_levels()` (synthetic currency hedge = local NAV × cash_EUR / cash_USD, i.e. local return plus the short-rate carry) and `currency_views()` (local / unhedged / hedged, rebased to 100).
+  - S3: `engine/robo.py`: the reference robo. `QUESTIONS` (7 questions in three groups: tolerance, capacity, need), `risk_profile()` (profile = round(min(tolerance, capacity)), need never raises it), `MODEL_PORTFOLIOS` (10 rows × IWDA.AS / IS3N.DE / EUNH.DE / XG7S.DE / XEON.DE; equity = 10% × profile, 95% at 10; cash sleeve in 1–2), `robo_backtest()` (calendar or band rebalancing + costs + fee layer), `goal_simulation()` (joint block bootstrap of monthly returns; profile-based pot pays goals when due vs one bucket per goal; reports P(met), median, 5th percentile, P(all met), equity at start), `aggregate_weights()`, `monthly_returns_from_prices()`.
+  - `engine/factors.py`, `engine/stylized.py`, `engine/checks.py` as before. S3: `checks` adds an info note for provider-published robo series (asset class `Robo-advisor`).
+- **Apps:**
+  - `apps/performance_analyzer.py` (toolkit #1): scenarios per session (`?session=2`, `?session=3`). S3: Indexa's ten profiles appended as series `INDEXA-1..10` (asset class `Robo-advisor`, EUR, fund accounts 10–100k€, business days), four Session 3 scenarios (Indexa's profiles vs DIY 60/40; robo vs LifeStrategy vs DIY; world equity USD / EUR unhedged / EUR hedged with the real hedged ETF IWDE.L; rebalancing never/monthly/yearly).
+  - S3: `apps/robo_simulator.py` (toolkit #3, "Robo-Advisor Lab"): tabs 1 profile (questionnaire, override), 2 portfolio (table, editable row), 3 backtest (fee layer, rebalancing incl. drift band, costs, window, benchmark = Indexa same profile / V60A.DE / IWDE.L, "the Excel way" toggle = daily free rebalancing, no fee), 4 goals (goal-based vs profile-based, euro ETFs 2009–26 or long US history 1987–2026, bucket 0 = cash), 5 what could be wrong (the seven traps + engine checks), 6 how it works + AI prompt. **Not yet deployed:** create a second Streamlit Cloud app from `main` with main file `apps/robo_simulator.py`; planned name `dislab-robo-lab` (the deck and docs print that URL; rebuild them if the name differs).
+- **Data snapshot:** 73 tickers to 13 Oct 2026 (S3 added IWDE.L, EUNA.DE, XG7S.DE, XEON.DE, V60A.DE on 3 Nov 2026, cut to the same end date), FRED DTB3/DGS10/DEXUSEU/IR3TIB01EZM156N, Indexa profiles, Ken French factors to Aug 2026. S3: `data/kits/robo_data_s3.csv`, the student data file (`py scripts/build_kit_s3.py`).
+- **Notebooks:** S3: `notebooks/s3_robo_lab.ipynb` (the optional code track: Excel way vs engine, FX views, goals).
+- **Tests:** 150 passing (3 Nov 2026) (`py -m pytest`), including AppTest smoke tests of both apps (every scenario, currencies, frequencies, robo rebalance modes, histories).
+- **Not built yet:** signal-based backtest engine (weights from signals, shifted one period), PSR/DSR, walk-forward.
 
 ## Decisions taken
 - "Annualized return" in Sharpe, Sortino and Calmar is the **CAGR** (geometric, calendar days / 365.25), not the arithmetic mean × 252. Sortino's target is rf, over all periods.
 - Information ratio = (CAGR − benchmark CAGR) / tracking error. Alpha = Jensen's, from arithmetic periodic means.
-- % positive years / worst year use **full calendar years only**. A series starting 4 Jan has a partial first year, so start a window on the prior year-end to include it.
-- Comparisons use **common dates** (inner join on dates, no filling). Cross-market pairs (US vs EU listings, BTC 7-day) therefore get multi-day returns, and daily correlation is understated by close-time asynchrony. That's a teaching point; consider weekly/monthly correlation in the apps.
+- % positive years / worst year use **full calendar years only**.
+- Comparisons use **common dates** (inner join on dates, no filling).
 - The snapshot is CSV per ticker (`date, close` adjusted, in listing currency) plus `manifest.csv`. Downloads drop today's possibly-intraday bar.
-- FRED via the keyless `fredgraph.csv` endpoint (latest vintage). ALFRED/vintage data will need `FRED_API_KEY` from the environment.
-- **Currency conversion uses FRED `DEXUSEU`, never Yahoo `EURUSD=X`** (bad ticks: 17% fake daily moves in 2008, up to 15% off the Fed rate). Unhedged; dates matched exactly, no filling.
-- **EUR risk-free rate:** euro-area 3m interbank (`IR3TIB01EZM156N`, OECD monthly, lags ~9 months). Apps default to it when the currency is EUR, otherwise DTB3; always shown on screen.
-- **Portfolios:** rebalance on the last common trading day of each period, never on the sample's last day; cost = Σ|Δw| × bps on NAV; initial purchase free. A portfolio's window starts when every series in the comparison exists, so its turnover/costs cover the same window as the metrics.
-- **Frequency:** `to_frequency` keeps real last dates (no relabelling to period end) and the first observation, so CAGR is identical at every frequency.
-- **Apps import the engine with a `sys.path` shim** at the top of each app (its own folder + repo root), not `-e .` in requirements. Works locally, on Streamlit Cloud and in AppTest.
-- Stress episodes are S&P 500 closing peak → trough (verified against SPY in the snapshot).
-- **Yahoo's Xetra lines of the iShares/Xtrackers world factor ETFs have bad ticks** (±20–30% one-day reversals in 2014, 5–6 Jun 2017, Oct 2025): the snapshot uses the London USD lines (IWMO/IWQU/IWVL/MVOL.L), converted to EUR by the engine. BTAL dropped (−33%/+49% on 29–30 Apr 2015). Run a max-|daily return| scan on every new ticker before adding it.
-- Asset classes `Smart beta`, `Factor equity`, `Multi-factor`, `Alternative`, `Thematic` drive the rule-based-product checks.
+- FRED via the keyless `fredgraph.csv` endpoint (latest vintage).
+- **Currency conversion uses FRED `DEXUSEU`, never Yahoo `EURUSD=X`.** Unhedged; dates matched exactly, no filling.
+- **EUR risk-free rate:** euro-area 3m interbank (`IR3TIB01EZM156N`, OECD monthly, lags ~9 months). Apps default to it when the currency is EUR.
+- **Portfolios:** rebalance on the last common trading day of each period, never on the sample's last day; cost = Σ|Δw| × bps on NAV; initial purchase free.
+- **Frequency:** `to_frequency` keeps real last dates and the first observation, so CAGR is identical at every frequency.
+- **Apps import the engine with a `sys.path` shim** at the top of each app.
+- Stress episodes are S&P 500 closing peak → trough.
+- **Yahoo's Xetra lines of the iShares/Xtrackers world factor ETFs have bad ticks**: the snapshot uses the London USD lines. Run a max-|daily return| scan on every new ticker before adding it (S3 tickers scanned: IWDE.L's 9.8% on 12 Mar 2020 is real).
+- Asset classes `Smart beta`, `Factor equity`, `Multi-factor`, `Alternative`, `Thematic` drive the rule-based-product checks; `Robo-advisor` drives the provider-published note.
+- **S3 (3 Nov 2026):** the model table's hedged-bond leg is XG7S.DE (from 2013) rather than EUNA.DE (from Nov 2017) so that the Indexa comparison starts in Dec 2015. The robo's fee layer defaults to 0.43% (Indexa's management 0.338% + custody 0.093%, Nov 2026); fund TERs are already inside Yahoo's adjusted prices. Indexa series are appended in the apps, not added to `universe.csv`, so `refresh_data.py` never tries to download them.
+- **S3 goal simulation:** joint block bootstrap (12-month blocks) of historical monthly returns, no expected-return assumption; the euro menu (IWDA/EUNH/XEON since Oct 2009) is short and bullish, so the long US history (VFINX/VBMFX since 1987, cash at 0%) is offered as a robustness check. The profile-based pot pays each goal when due (an early goal can be met with money meant for a later one); that is the point, not a bug.
 
 ## Gotchas on the instructor's PC
-- **Norton 360 intercepts HTTPS.** curl (inside yfinance) rejects its root certificate. `data._windows_ca_bundle()` merges certifi with the Windows root store, so verification stays on. If yfinance says "possibly delisted; no price data found" for everything, delete `%LOCALAPPDATA%\py-yfinance` (stale cookie) and retry.
+- **Norton 360 intercepts HTTPS.** curl (inside yfinance) rejects its root certificate. `data._windows_ca_bundle()` merges certifi with the Windows root store. If yfinance says "possibly delisted; no price data found" for everything, delete `%LOCALAPPDATA%\py-yfinance` and retry.
 - Python is `py` (Anaconda 3.12, pandas 2.2). Code must stay pandas-3-safe; pytest turns FutureWarnings into errors.
 - The repo sits inside OneDrive. If OneDrive ever reports conflicts in `.git/`, pause OneDrive sync before git operations.
+- Bash heredocs in the Claude Code harness break on non-ASCII characters (€, →, –): write patch scripts with the Write tool and run them with `py`.
 
 ## Next steps
-1. **Deployed** 19 Oct 2026: https://dislab-performance-analyzer-s1.streamlit.app/ (Streamlit Community Cloud, from `main`, `apps/performance_analyzer.py`). Pushing to `main` redeploys it. Free apps sleep after days without traffic: open it ~15 min before class.
-2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S3 robo simulator and S5 TAA.
-3. S2 (22 Oct 2026): pushed with the Session 2 scenarios; check the live app shows Class: Session 1 by default and `?session=2` works.
-4. Extend the analyzer for S3 (Indexa profiles as series, hedged vs unhedged) and S8 (PCA/contribution) rather than writing new apps.
+1. **Deploy the Robo-Advisor Lab** on Streamlit Community Cloud (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/robo_simulator.py`, app URL `dislab-robo-lab`). Then open both apps ~15 min before class (free apps sleep).
+2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S5 TAA and S7.
+3. Extend the analyzer for S8 (PCA/contribution) rather than writing new apps.

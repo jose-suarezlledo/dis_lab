@@ -36,11 +36,25 @@ RF_OPTIONS = ["Auto", "US T-bill", "Euro 3m", "Custom"]
 MAX_ASSETS = 6
 
 
+INDEXA_TIER = "10-100k€"
+
+
 @st.cache_data
 def load_all():
     uni = data.load_universe()
     uni = uni[uni["asset_class"] != "FX"]  # exchange rates are not investments here
     prices = data.load_prices(list(uni.index))
+    # Session 3: Indexa Capital's published profiles as series (EUR, net of Indexa's fees, fund accounts 10-100k€).
+    ix = data.load_indexa(INDEXA_TIER, freq=None)
+    ix = ix[ix.index.dayofweek < 5]  # the file repeats values on weekends
+    ix.columns = [f"INDEXA-{p}" for p in ix.columns]
+    prices = prices.join(ix, how="outer").sort_index()
+    rows = pd.DataFrame({
+        "name": [f"Indexa Capital profile {c.split('-')[1]} (published, net of fees)" for c in ix.columns],
+        "asset_class": "Robo-advisor", "currency": "EUR", "ucits": "Y",
+        "notes": f"Indexa Capital published returns, fund accounts {INDEXA_TIER}, Dec 2015 to Jan 2025",
+    }, index=pd.Index(ix.columns, name="ticker"))
+    uni = pd.concat([uni, rows])
     man = data.load_manifest()
     return uni, prices, man
 
@@ -134,7 +148,45 @@ SESSION_2 = {
     CUSTOM: None,
 }
 
-SESSIONS = {"Session 1": SESSION_1, "Session 2": SESSION_2}
+# Session 3: robo-advisors. Indexa's published profiles, a DIY alternative, FX views, rebalancing.
+SESSION_3 = {
+    "Indexa's ten risk profiles, net of fees (2016–2025)": dict(
+        assets=["INDEXA-1", "INDEXA-3", "INDEXA-8", "INDEXA-10"], benchmark="INDEXA-6",
+        portfolio=[("IWDA.AS", 60), ("EUNH.DE", 40)], rebalance="monthly", cost=10,
+        start=dt.date(2015, 12, 31), currency="EUR", freq="monthly",
+        question="Indexa Capital's own published returns for profiles 1, 3, 6, 8 and 10 (fund accounts of 10–100k€, "
+                 "after its fees), against a do-it-yourself 60/40 of two ETFs. Which profile had the worst year, and "
+                 "when? Was 'conservative' safe in 2022? How much of the gap to the DIY mix is fees, and how much is "
+                 "the bond mix?",
+    ),
+    "Robo vs one-fund vs DIY: profile 6, LifeStrategy 60, two ETFs": dict(
+        assets=["V60A.DE", "IWDA.AS"], benchmark="INDEXA-6",
+        portfolio=[("IWDA.AS", 60), ("EUNH.DE", 40)], rebalance="quarterly", cost=10,
+        start=dt.date(2020, 12, 10), currency="EUR", freq="monthly",
+        question="Three ways to own a 60/40 world portfolio: Indexa's profile 6 (about 0.53% a year all-in), "
+                 "Vanguard's LifeStrategy 60 ETF (0.25%), or two ETFs you rebalance yourself (0.15% plus your time). "
+                 "Over this short window, does the fee gap show? What else would decide it (taxes on switching, "
+                 "discipline, the bond mix)?",
+    ),
+    "Euro investor: world equity in dollars, unhedged and hedged": dict(
+        assets=["URTH", "IWDA.AS", "IWDE.L"], benchmark="IWDA.AS", portfolio=None,
+        start=dt.date(2012, 1, 12), currency="As listed", freq="weekly",
+        question="The same MSCI World index three ways: the US ETF in dollars (URTH), the UCITS ETF a euro investor "
+                 "holds unhedged (IWDA), and the euro-hedged class (IWDE). Compare 2022 and 2025 in the calendar "
+                 "years, then volatility and max drawdown. Who paid for the hedge, and what did it buy?",
+    ),
+    "Rebalancing: never, monthly, yearly (60/40 of two ETFs)": dict(
+        assets=["IWDA.AS", "EUNH.DE"], benchmark="IWDA.AS",
+        portfolio=[("IWDA.AS", 60), ("EUNH.DE", 40)], rebalance="none", cost=10,
+        start=dt.date(2009, 9, 25), currency="EUR", freq="monthly",
+        question="The portfolio starts as buy and hold ('none'): watch its equity weight drift. Then set rebalancing "
+                 "to monthly, quarterly and yearly: compare CAGR, max drawdown, turnover and trading cost. Does "
+                 "rebalancing add return, or control risk? (Drift bands are in the Robo-Advisor Lab.)",
+    ),
+    CUSTOM: None,
+}
+
+SESSIONS = {"Session 1": SESSION_1, "Session 2": SESSION_2, "Session 3": SESSION_3}
 SCENARIOS = {k: v for sess in SESSIONS.values() for k, v in sess.items()}
 DEFAULT_SESSION = "Session 1"
 

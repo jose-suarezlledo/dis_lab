@@ -7,6 +7,7 @@ The apps read only these files, so class never depends on Yahoo Finance or FRED 
 | `universe.csv` | Tickers offered in the apps, with name, asset class, currency, UCITS flag | Hand-curated |
 | `prices/<TICKER>.csv` | `date, close`: adjusted (total-return) daily close in the listing currency | Yahoo Finance (`yfinance`, `auto_adjust=True`) |
 | `macro/<SERIES>.csv` | `date, value`, latest vintage (not real-time data): `DTB3` (US 3m T-bill, %), `DGS10`, `DEXUSEU` (USD per EUR, Fed noon rate, used for currency conversion), `IR3TIB01EZM156N` (euro-area 3m interbank rate, %, monthly, OECD; lags by several months) | FRED public CSV endpoint |
+| `kits/robo_data_s3.csv` | Session 3 student data kit: month-end EUR values (base 100) of the UCITS building blocks, Indexa's ten profiles, EUR/USD and the two short rates, Dec 2015 to Oct 2026. Built by `scripts/build_kit_s3.py` from this snapshot | This snapshot |
 | `indexa/indexa_stats_returns_mutual.csv` | Indexa Capital model-portfolio returns: profiles 1–10 × 3 account-size tiers, base 100, EUR, net of fees. `;` separator, decimal comma, one row per **calendar** day (weekends repeated) | Indexa Capital published statistics |
 
 Caveats to teach, not hide:

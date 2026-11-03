@@ -202,7 +202,7 @@ def time_under_water(nav: pd.Series) -> UnderWater:
         return best
     # Each under-water episode starts at the last peak date before it.
     episode_id = (~under).cumsum()
-    for _, grp in s[under].groupby(episode_id[under]):
+    for _, grp in s[under].groupby(episode_id[under].to_numpy()):  # array grouper: safe for int-named series
         peak_date = s.index[s.index.get_loc(grp.index[0]) - 1]
         after = s.index[s.index > grp.index[-1]]
         recovered = len(after) > 0

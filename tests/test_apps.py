@@ -29,7 +29,7 @@ def test_default_scenario_renders(app):
     assert app.radio(key="session").value == "Session 1"
 
 
-@pytest.mark.parametrize("session,index", [("Session 1", i) for i in range(5)] + [("Session 2", i) for i in range(6)])
+@pytest.mark.parametrize("session,index", [("Session 1", i) for i in range(5)] + [("Session 2", i) for i in range(6)] + [("Session 3", i) for i in range(4)])
 def test_every_scenario_renders(app, session, index):
     if session != app.radio(key="session").value:
         app.radio(key="session").set_value(session)
@@ -78,3 +78,56 @@ def test_empty_selection_stops_politely(app):
     app.multiselect(key="assets").set_value([])
     run(app)
     assert any("Pick at least one" in i.value for i in app.info)
+
+
+def test_session_link_opens_session_3_with_indexa_profiles():
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["session"] = "3"
+    run(at)
+    assert at.radio(key="session").value == "Session 3"
+    assert at.selectbox(key="benchmark").value == "INDEXA-6"
+    assert any("Published by the provider" in w.value for w in at.info)
+
+
+# --------------------------------------------------------------------------- robo simulator
+
+ROBO = str(Path(__file__).resolve().parents[1] / "apps" / "robo_simulator.py")
+
+
+@pytest.fixture
+def robo_app():
+    return run(AppTest.from_file(ROBO, default_timeout=120))
+
+
+def test_robo_default_renders(robo_app):
+    at = robo_app
+    assert not at.error, [e.value for e in at.error]
+    labels = {x.label: x.value for x in at.metric}
+    assert labels["Your profile"].endswith("/ 10")
+    assert "Rebalances" in labels and "All goals met: goal-based" in labels
+
+
+def test_robo_override_profile_and_excel_way(robo_app):
+    at = robo_app
+    at.selectbox(key="profile_override").set_value(10)
+    at.toggle(key="excel_way").set_value(True)
+    run(at)
+    assert not at.error, [e.value for e in at.error]
+    assert any("The Excel way" in w.value for w in at.warning)
+    assert at.selectbox(key="bench").value == "Indexa 10"
+
+
+@pytest.mark.parametrize("rebalance", ["none", "monthly", "yearly"])
+def test_robo_rebalance_modes(robo_app, rebalance):
+    at = robo_app
+    at.selectbox(key="rebalance").set_value(rebalance)
+    run(at)
+    assert not at.error, [e.value for e in at.error]
+
+
+def test_robo_long_us_history_and_other_benchmark(robo_app):
+    at = robo_app
+    at.radio(key="history").set_value("Long US history (1987–2026)")
+    at.selectbox(key="bench").set_value("V60A.DE")
+    run(at)
+    assert not at.error, [e.value for e in at.error]
