@@ -133,8 +133,8 @@ def performance_checks(
     if built:
         out.append(Check("info", 3, f"Rule-based products: you see the live record only ({', '.join(built)})",
                          "Index rules are designed on past data, and products launch after the rule has "
-                         "backtested well. Indices have tended to beat the market before their ETF launched "
-                         "and not after (Vanguard, 2012). Judge the post-launch record against a plain index, "
+                         "backtested well. Indices tracked by ETFs beat the market in their back-filled history "
+                         "and not once live (Vanguard, 2012). Judge the post-launch record against a plain index, "
                          "net of the higher fee."))
     themes = [c for c in cols if asset_class.get(c) == "Thematic"]
     if themes:
