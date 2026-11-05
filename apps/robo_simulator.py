@@ -106,9 +106,8 @@ with tabs[0]:
     k4.metric("Your profile", f"{rp.profile} / 10", help="The lower of tolerance and capacity, rounded.")
     (st.warning if rp.need_exceeds_profile else st.info)(rp.note)
     st.markdown("**Rule used:** profile = round(min(tolerance, capacity)), clamped to 1–10. Need never raises "
-                "the profile. Compare with the 2025 Excel exercise, whose score mixed age, horizon and three "
-                "1–5 scales with ad hoc weights and was not clamped: a 25-year-old with 'very stable income' "
-                "could land outside 1–10.")
+                "the profile. Compare with a typical first-draft score that mixes age, horizon and a few 1–5 scales "
+                "with ad hoc weights and is not clamped: an investor can then land outside 1–10, and age counts twice.")
     st.selectbox("Override the profile (to test any row of the table)", list(range(0, 11)),
                  key="profile_override", format_func=lambda p: "Use the questionnaire" if p == 0 else f"Profile {p}")
 
@@ -169,6 +168,10 @@ with tabs[2]:
     start = c5.date_input("From", dt.date(2015, 12, 31), min_value=dt.date(2009, 1, 1), max_value=LAST_DAY, key="start")
     end = c6.date_input("To", LAST_DAY, min_value=dt.date(2009, 1, 1), max_value=LAST_DAY, key="end")
     bench_opts = [f"Indexa {profile}"] + [f"Indexa {p}" for p in range(1, 11) if p != profile] + ["V60A.DE", "IWDE.L"]
+    # The Indexa benchmark follows the profile unless the user picked a non-Indexa benchmark.
+    if st.session_state.get("last_profile") != profile and str(st.session_state.get("bench", "Indexa")).startswith("Indexa"):
+        st.session_state.bench = f"Indexa {profile}"
+    st.session_state.last_profile = profile
     bench_name = c7.selectbox("Benchmark", bench_opts, key="bench",
                               help="Indexa's published return for the same profile number (net of its fees, "
                                    "10–100k€ accounts), Vanguard LifeStrategy 60 (V60A.DE) or hedged world equity.")
