@@ -542,12 +542,15 @@ with tabs[4]:
     if len(names) < 2:
         st.info("Add at least one more series to see how they move together.")
     else:
-        on = st.radio("Correlate", ["returns", "levels"], horizontal=True, key="corr_on",
-                      format_func=lambda v: f"{freq} returns (right)" if v == "returns"
-                      else "price levels (the classic bug)",
+        # Labels must not depend on other settings (e.g. the frequency): if they change between reruns,
+        # Streamlit can treat the switch as a new widget and hand back no value.
+        corr_labels = {"returns": "Returns (right)", "levels": "Price levels (the classic bug)"}
+        on = st.radio("Correlate", list(corr_labels), horizontal=True, key="corr_on", format_func=corr_labels.get,
                       help="Diversification depends on whether returns move together. Correlating price "
                            "levels measures shared trends instead: any two assets that rose over the "
                            "window look 'correlated'.")
+        if on not in corr_labels:  # a widget can come back empty after a rerun: default to the right measure
+            on = "returns"
         corr = m.correlation_matrix(levels, on)
         fig = go.Figure(go.Heatmap(z=corr.to_numpy(), x=names, y=names, zmin=-1, zmax=1,
                                    colorscale=ui.DIVERGING_SCALE, text=corr.map(lambda v: f"{v:.2f}").to_numpy(),
