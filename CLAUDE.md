@@ -45,6 +45,17 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 - Bash heredocs in the Claude Code harness break on non-ASCII characters (€, →, –): write patch scripts with the Write tool and run them with `py`.
 
 ## Next steps
+0. **Scheduled data refresh (agreed with the instructor on 11 Nov 2026; to build on 12 Nov).** Goal: the apps stay online and current for this and future cohorts.
+   - **Instructor first:** GitHub → Settings → Actions → General → Workflow permissions = "Read and write permissions". Confirm the frequency; monthly (first weekday) was recommended to limit repo growth.
+   - **Build:**
+     - A GitHub Actions workflow runs `scripts/refresh_data.py`, scans every series for bad ticks and runs the tests, and commits only if everything passes. It also has a manual "Run workflow" button.
+     - Failed or closed tickers keep their old data and are flagged.
+     - The class scenarios read a **frozen snapshot**: S1/S2 13 Oct 2026, S3 its own. That keeps the numbers identical to the slides, because Yahoo revises past adjusted prices.
+     - Custom runs on the latest data. An on-screen label says which data the user is seeing.
+     - Pin `requirements.txt` to the tested versions.
+     - Apply the same to the Robo-Advisor Lab.
+   - **After it ships:** every conversation must `git pull` before pushing.
+   - **Why pin versions (11 Nov 2026):** Streamlit Cloud installed a newer Streamlit than the local 1.57. A radio whose labels changed with the return frequency then came back empty and crashed the Diversification tab. Fixed in b69a9b4 with fixed labels and a fallback; keep widget labels independent of other settings.
 1. **Deploy the Robo-Advisor Lab** on Streamlit Community Cloud (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/robo_simulator.py`, app URL `dislab-robo-lab`). Then open both apps ~15 min before class (free apps sleep).
 2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S5 TAA and S7.
 3. Extend the analyzer for S8 (PCA/contribution) rather than writing new apps.
