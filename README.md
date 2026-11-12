@@ -11,7 +11,7 @@ Educational material only. Nothing here is investment advice.
 | Folder | What it holds |
 |---|---|
 | `engine/` | One tested Python package used by every app and notebook. `data.py` loads the cached snapshots and converts currencies; `metrics.py` holds every performance and risk definition; `portfolio.py` builds fixed-weight portfolios (drift, rebalancing, costs); `stylized.py` covers fat tails, volatility clustering and volatility drag; `checks.py` runs the automatic bias checks; `fx.py` gives the local, unhedged and hedged views of a foreign asset; `robo.py` is the reference robo-advisor (questionnaire, model portfolios, backtest with fees, goal-based vs profile-based simulation). |
-| `data/` | CSV snapshots with download dates (`manifest.csv`). The apps never download live during class. |
+| `data/` | CSV snapshots with download dates (`manifest.csv`). The apps never download live during class. `data/` is the latest refresh, updated monthly by `.github/workflows/refresh-data.yml`; `data/snapshots/2026-10-13/` is the frozen copy the class materials use. |
 | `apps/` | Streamlit apps, one per session tool (see `apps/README.md`). |
 | `notebooks/` | Optional Colab notebooks (same engine) for students who want to code. |
 | `scripts/` | `refresh_data.py`, the only script that downloads data; `build_kit_s3.py` writes the Session 3 student data file. |

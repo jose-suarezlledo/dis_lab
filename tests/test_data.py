@@ -93,7 +93,35 @@ def test_convert_currency(tmp_path):
         data.convert_currency(p.assign(X=1.0), "EUR", ccy, data_dir=tmp_path)
 
 
-# --------------------------------------------------------------------------- the real snapshot
+# --------------------------------------------------------------------------- quality scan (refresh safety net)
+
+
+def test_suspicious_moves_flags_bad_ticks_not_volatility():
+    idx = pd.bdate_range("2024-01-01", periods=6)
+    px = pd.DataFrame({"OK": [100, 110, 95, 100, 112, 100],        # ±15%: volatile but believable
+                       "BAD": [100, 101, 160, 102, 103, 104],       # a spike and its reversal
+                       "BTC": [100, 135, 100, 101, 102, 103]},      # +35%: fine for crypto
+                      index=idx)
+    out = data.suspicious_moves(px, asset_class={"BTC": "Crypto"})
+    assert list(out["ticker"]) == ["BAD", "BAD"]
+    assert [d.date().isoformat() for d in out["date"]] == ["2024-01-03", "2024-01-04"]
+    # Only the rows a refresh adds are checked when `after` is given
+    assert data.suspicious_moves(px[["BAD"]], after={"BAD": idx[3]}).empty
+    assert len(data.suspicious_moves(px[["BAD"]], after={"BAD": idx[2]})) == 1  # the return into day 4 is new
+    assert not data.suspicious_moves(px, asset_class={"BTC": "Crypto"}, limits={"Crypto": 0.3}).empty
+
+
+def test_return_revision_ignores_dividend_rescaling():
+    idx = pd.bdate_range("2024-01-01", periods=5)
+    old = pd.Series([100, 101, 103, 102, 105], index=idx, dtype=float)
+    assert data.return_revision(old, old * 0.97) < 1e-12  # a re-adjustment rescales every price
+    new = old.copy()
+    new.iloc[2] = 110  # a corrected print changes two daily returns
+    assert data.return_revision(old, new) > 0.05
+    assert data.return_revision(old, old.iloc[-1:]) == 0.0  # no common returns
+
+
+# --------------------------------------------------------------------------- the real data
 
 
 def test_fx_snapshot_is_clean():
@@ -101,17 +129,37 @@ def test_fx_snapshot_is_clean():
     assert fx.pct_change().abs().max() < 0.06  # Yahoo's EURUSD=X had 17% fake daily moves
 
 
-def test_cached_snapshot_integrity():
-    man = data.load_manifest()
+@pytest.mark.parametrize("folder", [None, "class snapshot"])
+def test_cached_data_integrity(folder):
+    folder = data.snapshot_dir() if folder else None
+    man = data.load_manifest(folder)
     prices = man[man["kind"] == "price"]
     if prices.empty:
         pytest.skip("no price snapshot yet")
     for t in prices["id"]:
-        s = data.load_prices(t)[t].dropna()
+        s = data.load_prices(t, data_dir=folder)[t].dropna()
         assert s.index.is_monotonic_increasing and s.index.is_unique, t
         assert (s > 0).all(), t
         row = prices.set_index("id").loc[t]
         assert str(s.index[-1].date()) == row["last_date"], t
+
+
+def test_class_snapshot_is_frozen_and_latest_is_not_older():
+    """The class scenarios read data/snapshots/2026-10-13; data/ is the latest refresh."""
+    snap = data.snapshot_dir()
+    assert data.CLASS_SNAPSHOT in data.snapshot_tags()
+    frozen = data.load_manifest(snap).set_index(["kind", "id"])
+    assert frozen.loc[("price", "SPY"), "last_date"] == "2026-10-13"
+    assert frozen.loc[("price", "XG7S.DE"), "last_date"] == "2026-10-13"  # S3 tickers were cut to the same day
+    latest = data.load_manifest().set_index(["kind", "id"])
+    for key in frozen.index:
+        assert key in latest.index, key
+        assert latest.loc[key, "last_date"] >= frozen.loc[key, "last_date"], key
+    # No bad ticks slipped into the latest refresh (the scan the refresh job runs)
+    uni = data.load_universe()
+    px = data.load_prices([t for t in data.cached_tickers() if t in uni.index])
+    bad = data.suspicious_moves(px, asset_class=uni["asset_class"].to_dict(), after={"BTC-USD": "2020-03-13"})
+    assert bad.empty, bad
 
 
 def test_real_indexa_file_if_present():

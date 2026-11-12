@@ -7,6 +7,9 @@ UCITS ETFs a euro investor can buy, Indexa Capital's ten published profiles (fun
 net of Indexa's fees, to Jan 2025), the EUR/USD rate and the two short rates (% per year).
 Students feed this file to the robo they build; the Robo-Advisor Lab reads the same snapshot, so the
 numbers can be checked against each other. No live download happens here.
+
+The kit is built from the frozen class snapshot (engine.data.CLASS_SNAPSHOT), never from the latest
+refresh in data/, so rebuilding it always gives the same file.
 """
 
 from __future__ import annotations
@@ -36,13 +39,14 @@ OUT = Path(__file__).resolve().parents[1] / "data" / "kits" / "robo_data_s3.csv"
 
 
 def main() -> int:
-    px = data.load_prices(list(ETFS)).loc[START:]
+    snap = data.snapshot_dir()  # the frozen class snapshot, not the latest refresh
+    px = data.load_prices(list(ETFS), data_dir=snap).loc[START:]
     monthly = px.resample("ME").last()
     ix = data.load_indexa("10-100k€", freq="ME").loc[START:]
     ix.columns = [f"INDEXA_{p}" for p in ix.columns]
-    fx = data.load_fred("DEXUSEU").resample("ME").last().loc[START:].rename("EURUSD")
-    us = data.load_fred("DTB3").resample("ME").last().loc[START:].rename("RATE_USD_3M_PCT")
-    eu = data.load_fred(data.EURO_RF_SERIES).resample("ME").last().loc[START:].rename("RATE_EUR_3M_PCT")
+    fx = data.load_fred("DEXUSEU", data_dir=snap).resample("ME").last().loc[START:].rename("EURUSD")
+    us = data.load_fred("DTB3", data_dir=snap).resample("ME").last().loc[START:].rename("RATE_USD_3M_PCT")
+    eu = data.load_fred(data.EURO_RF_SERIES, data_dir=snap).resample("ME").last().loc[START:].rename("RATE_EUR_3M_PCT")
     kit = monthly.join([ix, fx, us, eu], how="outer").sort_index()
     kit = kit.loc[:monthly.index[-1]]
     for c in list(ETFS) + list(ix.columns):

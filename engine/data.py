@@ -11,6 +11,11 @@ data/macro/<SERIES>.csv     date, value   (FRED, as published today, not vintage
 data/indexa/...csv          Indexa Capital published profile returns (base 100)
 data/factors/<NAME>.csv     Kenneth French data library: monthly long-short factor returns
 data/manifest.csv           one row per cached file: source, first/last date, download date
+data/snapshots/<TAG>/...    frozen copies of prices, macro, factors and manifest (never refreshed)
+
+`data/` holds the latest refresh (a scheduled GitHub Actions job reruns
+`scripts/refresh_data.py`). The class materials are built on the frozen copy in
+`data/snapshots/2026-10-13/` (see `snapshot_dir`), so their numbers never move.
 
 Prices are never forward-filled or zero-filled here: a ticker has NaN before
 its first trading day and on days its exchange was closed. Use
@@ -29,17 +34,33 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
+# The frozen copy the 2026 class materials were built on (S1-S3 decks, exercise briefs, the S3 kit).
+# The apps' class scenarios read it, so the numbers on screen match the slides even after Yahoo
+# revises its adjusted prices. `data/` itself is the latest refresh.
+CLASS_SNAPSHOT = "2026-10-13"
+
+# Largest believable one-day move, by asset class (anything bigger is flagged for a human to check).
+# Real crashes do exceed 10-15% (12 Mar 2020: IWDE.L -9.8%, Bitcoin -37%), so the limits are generous:
+# they catch Yahoo's bad ticks (a spike and its reversal), not volatility.
+MAX_DAILY_MOVE = {"default": 0.25, "Crypto": 0.45}
+
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
 FRENCH_URL = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/{name}_CSV.zip"
 
 __all__ = [
     "DATA_DIR",
+    "CLASS_SNAPSHOT",
+    "MAX_DAILY_MOVE",
+    "snapshot_dir",
+    "snapshot_tags",
     "load_universe",
     "load_manifest",
     "cached_tickers",
     "load_prices",
     "download_prices",
     "save_prices",
+    "suspicious_moves",
+    "return_revision",
     "load_fred",
     "download_fred",
     "save_fred",
@@ -63,6 +84,29 @@ def _dir(data_dir: Path | str | None) -> Path:
 
 def _file_stem(ticker: str) -> str:
     return ticker.replace("/", "_")
+
+
+# --------------------------------------------------------------------------- snapshots
+
+
+def snapshot_dir(tag: str = CLASS_SNAPSHOT, data_dir: Path | str | None = None) -> Path:
+    """Folder of a frozen copy of the cache, usable as `data_dir` in every loader.
+
+    A snapshot holds prices, macro, factors and its own manifest. It has no
+    `indexa/` folder: the Indexa file is a published series that is never
+    refreshed, so it is read from `data/` whichever snapshot is in use.
+    """
+    folder = _dir(data_dir) / "snapshots" / tag
+    if not (folder / "manifest.csv").exists():
+        raise KeyError(f"no data snapshot {tag!r} in {folder.parent}")
+    return folder
+
+
+def snapshot_tags(data_dir: Path | str | None = None) -> list[str]:
+    root = _dir(data_dir) / "snapshots"
+    if not root.exists():
+        return []
+    return sorted(p.name for p in root.iterdir() if (p / "manifest.csv").exists())
 
 
 # --------------------------------------------------------------------------- catalogue
@@ -215,6 +259,49 @@ def save_prices(
         )
     if rows:
         _update_manifest(rows, data_dir)
+
+
+def suspicious_moves(
+    prices: pd.DataFrame,
+    asset_class: dict[str, str] | None = None,
+    after: dict[str, pd.Timestamp | str] | None = None,
+    limits: dict[str, float] | None = None,
+) -> pd.DataFrame:
+    """One-day moves larger than the limit for the column's asset class: ticker, date, return.
+
+    `after` restricts each ticker to the dates after a timestamp (e.g. what a
+    refresh adds), `limits` overrides MAX_DAILY_MOVE. The result is a list for a
+    human to check, not an automatic filter: a real crash day can appear in it.
+    """
+    limits = {**MAX_DAILY_MOVE, **(limits or {})}
+    asset_class = asset_class or {}
+    rows = []
+    for t in prices.columns:
+        s = prices[t].dropna()
+        if after and t in after and after[t] is not None:
+            cut = pd.Timestamp(after[t])
+            s = s.loc[s.index >= cut]  # keep the cut date so that the first new return is checked
+        r = s.pct_change().dropna()
+        if after and t in after and after[t] is not None:
+            r = r.loc[r.index > cut]
+        lim = limits.get(asset_class.get(t, ""), limits["default"])
+        for d, v in r[r.abs() > lim].items():
+            rows.append({"ticker": t, "date": d, "return": float(v)})
+    return pd.DataFrame(rows, columns=["ticker", "date", "return"])
+
+
+def return_revision(old: pd.Series, new: pd.Series) -> float:
+    """Largest difference between old and new daily returns on their common dates.
+
+    A re-adjustment for a dividend rescales every earlier price by the same
+    factor, so returns stay put; a value above ~0.001 means Yahoo corrected a
+    past print (or fixed a bad tick), which is worth a note, not a rejection.
+    """
+    common = old.dropna().index.intersection(new.dropna().index)
+    if len(common) < 2:
+        return 0.0
+    ro, rn = old.loc[common].pct_change(), new.loc[common].pct_change()
+    return float((rn - ro).abs().max())
 
 
 # --------------------------------------------------------------------------- macro (FRED)

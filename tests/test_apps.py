@@ -97,6 +97,25 @@ def test_empty_selection_stops_politely(app):
     assert any("Pick at least one" in i.value for i in app.info)
 
 
+def test_scenarios_use_the_class_snapshot_and_custom_the_latest(app):
+    import datetime as dt
+
+    frozen = dt.date(2026, 10, 13)
+    assert app.radio(key="dataset").value == "class"
+    assert app.date_input(key="end").value == frozen
+    assert any("Class snapshot" in md.value for md in app.markdown)
+    app.selectbox(key="scenario").set_value("Custom (keep my settings)")
+    run(app)
+    assert app.radio(key="dataset").value == "latest"
+    assert app.date_input(key="end").value > frozen
+    assert any("Latest refresh" in md.value for md in app.markdown)
+    assert app.multiselect(key="assets").value == ["VFINX", "VBMFX"]  # the other settings were kept
+    app.radio(key="dataset").set_value("class")  # the switch works on its own too
+    run(app)
+    assert app.date_input(key="end").value == frozen
+    assert not app.error
+
+
 def test_session_link_opens_session_3_with_indexa_profiles():
     at = AppTest.from_file(APP, default_timeout=60)
     at.query_params["session"] = "3"
@@ -114,6 +133,19 @@ ROBO = str(Path(__file__).resolve().parents[1] / "apps" / "robo_simulator.py")
 @pytest.fixture
 def robo_app():
     return run(AppTest.from_file(ROBO, default_timeout=120))
+
+
+def test_robo_dataset_switch(robo_app):
+    import datetime as dt
+
+    at = robo_app
+    assert at.radio(key="dataset").value == "class"
+    assert at.date_input(key="end").value == dt.date(2026, 10, 13)
+    at.radio(key="dataset").set_value("latest")
+    run(at)
+    assert at.date_input(key="end").value > dt.date(2026, 10, 13)
+    assert any("Latest refresh" in md.value for md in at.markdown)
+    assert not at.error
 
 
 def test_robo_default_renders(robo_app):

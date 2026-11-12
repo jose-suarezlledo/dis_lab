@@ -38,30 +38,37 @@ MAX_ASSETS = 6
 
 INDEXA_TIER = "10-100k€"
 
+# Two copies of the data (see engine/data.py): the frozen class snapshot, which every class scenario
+# uses so the numbers match the slides, and the latest refresh, which a scheduled job updates monthly.
+DATA_FOLDERS = {"class": data.snapshot_dir(), "latest": data.DATA_DIR}
+
 
 @st.cache_data
 def load_all():
     uni = data.load_universe()
     uni = uni[uni["asset_class"] != "FX"]  # exchange rates are not investments here
-    prices = data.load_prices(list(uni.index))
     # Session 3: Indexa Capital's published profiles as series (EUR, net of Indexa's fees, fund accounts 10-100k€).
     ix = data.load_indexa(INDEXA_TIER, freq=None)
-    ix = ix[ix.index.dayofweek < 5]  # the file repeats values on weekends
+    ix = ix[ix.index.day_of_week < 5]  # the file repeats values on weekends
     ix.columns = [f"INDEXA-{p}" for p in ix.columns]
-    prices = prices.join(ix, how="outer").sort_index()
+    sets = {}
+    for key, folder in DATA_FOLDERS.items():
+        prices = data.load_prices(list(uni.index), data_dir=folder).join(ix, how="outer").sort_index()
+        sets[key] = (prices, data.load_manifest(folder))
     rows = pd.DataFrame({
         "name": [f"Indexa Capital profile {c.split('-')[1]} (published, net of fees)" for c in ix.columns],
         "asset_class": "Robo-advisor", "currency": "EUR", "ucits": "Y",
         "notes": f"Indexa Capital published returns, fund accounts {INDEXA_TIER}, Dec 2015 to Jan 2025",
     }, index=pd.Index(ix.columns, name="ticker"))
     uni = pd.concat([uni, rows])
-    man = data.load_manifest()
-    return uni, prices, man
+    return uni, sets
 
 
-UNI, PRICES, MANIFEST = load_all()
-FIRST_DAY = PRICES.index[0].date()
-LAST_DAY = PRICES.index[-1].date()
+UNI, DATASETS = load_all()
+FIRST_DAY = min(px.index[0].date() for px, _ in DATASETS.values())
+LAST = {k: px.index[-1].date() for k, (px, _) in DATASETS.items()}
+DATA_LABEL = {"class": f"Class snapshot (to {LAST['class']:%d %b %Y})",
+              "latest": f"Latest refresh (to {LAST['latest']:%d %b %Y})"}
 
 # --------------------------------------------------------------------------- scenarios
 
@@ -191,11 +198,19 @@ SCENARIOS = {k: v for sess in SESSIONS.values() for k, v in sess.items()}
 DEFAULT_SESSION = "Session 1"
 
 
+def change_dataset() -> None:
+    st.session_state.end = LAST[st.session_state.dataset]  # 'To' follows the data in use
+
+
 def apply_scenario() -> None:
     sc = SCENARIOS.get(st.session_state.scenario)
-    if sc is None:
-        return
     ss = st.session_state
+    if sc is None:
+        # Custom: keep every setting, but work on the latest data
+        ss.dataset = "latest"
+        change_dataset()
+        return
+    ss.dataset = "class"  # class scenarios use the frozen snapshot, so the numbers match the slides
     ss.assets = sc["assets"]
     ss.benchmark = sc["benchmark"]
     ss.pf_on = sc["portfolio"] is not None
@@ -205,7 +220,7 @@ def apply_scenario() -> None:
     ss.rebalance = sc.get("rebalance", "monthly")
     ss.cost_bps = float(sc.get("cost", 5))
     ss.start = sc["start"]
-    ss.end = LAST_DAY
+    ss.end = LAST["class"]
     ss.currency = sc["currency"]
     ss.freq = sc["freq"]
 
@@ -228,6 +243,10 @@ if "scenario" not in st.session_state:
     st.session_state.rf_custom = 2.0
     st.session_state.colors = {}
     apply_scenario()
+
+PRICES, MANIFEST = DATASETS[st.session_state.dataset]
+DATA_DIR = DATA_FOLDERS[st.session_state.dataset]
+LAST_DAY = LAST[st.session_state.dataset]
 
 
 def label(t: str) -> str:
@@ -271,6 +290,11 @@ with st.sidebar:
                              "(10 bps = 0.10%). Charged at every rebalance.")
 
     st.subheader("Window and units")
+    st.radio("Data", list(DATASETS), key="dataset", format_func=DATA_LABEL.get, horizontal=True,
+             on_change=change_dataset,
+             help="Class snapshot: the frozen data the slides and exercises were built on, so every number "
+                  "matches them. Latest refresh: the same sources, updated monthly by a scheduled job. Yahoo "
+                  "revises past adjusted prices, so the two can differ slightly on the same dates.")
     c1, c2 = st.columns(2)
     c1.date_input("From", key="start", min_value=FIRST_DAY, max_value=LAST_DAY,
                   help="The comparison starts when every series has data, so it may start later.")
@@ -330,7 +354,7 @@ if start >= end:
 tickers = list(dict.fromkeys(assets + list(weights) + [bench]))
 px = PRICES[tickers].loc[start:end]
 if currency != "As listed":
-    px = data.convert_currency(px, currency, UNI["currency"].to_dict())
+    px = data.convert_currency(px, currency, UNI["currency"].to_dict(), data_dir=DATA_DIR)
 inception = {t: px[t].first_valid_index() for t in tickers}
 if any(d is None for d in inception.values()):
     st.error("No data in this window for: " + ", ".join(t for t, d in inception.items() if d is None))
@@ -368,11 +392,12 @@ def risk_free() -> tuple[float, str]:
         mode = "Euro 3m" if currency == "EUR" else "US T-bill"
     if mode == "Euro 3m":
         try:
-            return (data.risk_free_rate(w_start, w_end, data.EURO_RF_SERIES),
+            return (data.risk_free_rate(w_start, w_end, data.EURO_RF_SERIES, data_dir=DATA_DIR),
                     "euro-area 3-month interbank rate (OECD via FRED, monthly), window average")
         except ValueError:
             pass  # window before 1994: fall back to the T-bill
-    return data.risk_free_rate(w_start, w_end, "DTB3"), "3-month US T-bill (FRED DTB3), window average"
+    return (data.risk_free_rate(w_start, w_end, "DTB3", data_dir=DATA_DIR),
+            "3-month US T-bill (FRED DTB3), window average")
 
 
 rf, rf_source = risk_free()
@@ -383,7 +408,7 @@ shown_ccy = currency if currency != "As listed" else (
 st.markdown(
     f"**Common window:** {w_start:%d %b %Y} → {w_end:%d %b %Y} ({years:.1f} years) · "
     f"**{freq.capitalize()}** returns · **Currency:** {shown_ccy} · "
-    f"**Risk-free rate:** {rf:.2%} ({rf_source})"
+    f"**Risk-free rate:** {rf:.2%} ({rf_source}) · **Data:** {DATA_LABEL[st.session_state.dataset]}"
 )
 
 checks = chk.performance_checks(
@@ -699,9 +724,14 @@ with tabs[7]:
    with these definitions: CAGR uses calendar days / 365.25; volatility = standard deviation of returns
    × √(periods per year); Sharpe = (CAGR − risk-free) / volatility; drawdowns are measured on the value path.
 
-**Data:** Yahoo Finance adjusted closes and FRED (US T-bill, euro 3-month rate, EUR/USD), saved as a
-snapshot so the tool never depends on a live download. Snapshot taken on
-{MANIFEST['downloaded'].max()}; prices up to {LAST_DAY:%d %b %Y}.
+**Data:** Yahoo Finance adjusted closes and FRED (US T-bill, euro 3-month rate, EUR/USD), saved as
+snapshots so the tool never depends on a live download. Two copies exist, chosen in the sidebar:
+the **class snapshot** (downloaded {DATASETS['class'][1]['downloaded'].max()}, prices to
+{LAST['class']:%d %b %Y}), which every class scenario uses so that the numbers match the slides and
+exercises; and the **latest refresh** (downloaded {DATASETS['latest'][1]['downloaded'].max()}, prices to
+{LAST['latest']:%d %b %Y}), which a scheduled job updates monthly after checking every series for bad
+ticks. Yahoo revises past adjusted prices whenever a dividend is re-adjusted, so the two copies can
+differ slightly on the same dates. You are looking at: **{DATA_LABEL[st.session_state.dataset]}**.
 
 **Ask your AI analyst** (any assistant works). Download the metrics CSV, attach it, and paste:
 """)

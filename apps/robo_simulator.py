@@ -44,20 +44,31 @@ TRAPS = [
 ]
 
 
+# Two copies of the data (see engine/data.py): the frozen class snapshot the Session 3 kit, deck and
+# exercise were built on, and the latest refresh, updated monthly by a scheduled job.
+DATA_FOLDERS = {"class": data.snapshot_dir(), "latest": data.DATA_DIR}
+
+
 @st.cache_data
 def load_all():
     uni = data.load_universe()
     menu = list(robo.ASSETS) + EXTRA + list(LONG_US)
-    px = data.load_prices(menu)
     ix = data.load_indexa(INDEXA_TIER, freq=None)
-    ix = ix[ix.index.dayofweek < 5]  # the file repeats values on weekends
+    ix = ix[ix.index.day_of_week < 5]  # the file repeats values on weekends
     ix.columns = [f"Indexa {p}" for p in ix.columns]
-    man = data.load_manifest()
-    return uni, px, ix, man
+    sets = {k: (data.load_prices(menu, data_dir=f), data.load_manifest(f)) for k, f in DATA_FOLDERS.items()}
+    return uni, sets, ix
 
 
-UNI, PRICES, INDEXA, MANIFEST = load_all()
-LAST_DAY = PRICES.index[-1].date()
+UNI, DATASETS, INDEXA = load_all()
+LAST = {k: px.index[-1].date() for k, (px, _) in DATASETS.items()}
+DATA_LABEL = {"class": f"Class snapshot (to {LAST['class']:%d %b %Y})",
+              "latest": f"Latest refresh (to {LAST['latest']:%d %b %Y})"}
+
+
+def change_dataset() -> None:
+    if "end" in st.session_state:
+        st.session_state.end = LAST[st.session_state.dataset]  # 'To' follows the data in use
 
 
 def label(t: str) -> str:
@@ -76,6 +87,13 @@ st.caption("DIS toolkit #3 · Arc stages: **Rules / Model → Backtest → Imple
 st.markdown("> **The decision:** a robo-advisor offers to manage €100k of your savings for about 0.5% a year. "
             "Do you sign up, build the same thing yourself with two ETFs, or hand it to your bank's mixed fund? "
             "And would you trust the robo you built last night?")
+st.radio("Data", list(DATASETS), key="dataset", format_func=DATA_LABEL.get, horizontal=True, on_change=change_dataset,
+         help="Class snapshot: the frozen data the Session 3 kit, slides and exercise were built on, so every number "
+              "matches them. Latest refresh: the same sources, updated monthly by a scheduled job. Yahoo revises past "
+              "adjusted prices, so the two can differ slightly on the same dates.")
+PRICES, MANIFEST = DATASETS[st.session_state.dataset]
+DATA_DIR = DATA_FOLDERS[st.session_state.dataset]
+LAST_DAY = LAST[st.session_state.dataset]
 
 tabs = st.tabs(["1 · Your profile", "2 · Your portfolio", "3 · Backtest", "4 · Goals",
                 "What could be wrong here", "How this works"])
@@ -201,12 +219,12 @@ with tabs[2]:
     w_start, w_end = levels.index[0], levels.index[-1]
     years = m.years_between(w_start, w_end)
     try:
-        rf = data.risk_free_rate(w_start, w_end, data.EURO_RF_SERIES)
+        rf = data.risk_free_rate(w_start, w_end, data.EURO_RF_SERIES, data_dir=DATA_DIR)
         rf_src = "euro 3-month rate"
     except ValueError:
         rf, rf_src = 0.0, "none"
     st.markdown(f"**Common window:** {w_start:%d %b %Y} → {w_end:%d %b %Y} ({years:.1f} years) · monthly returns · "
-                f"EUR · risk-free {rf:.2%} ({rf_src})")
+                f"EUR · risk-free {rf:.2%} ({rf_src}) · **Data:** {DATA_LABEL[st.session_state.dataset]}")
     if bench_name.startswith("Indexa") and w_end < pd.Timestamp(end) - pd.Timedelta(days=45):
         st.info(f"Indexa's published series ends on {INDEXA.index[-1]:%d %b %Y}, so the comparison stops there.")
 
@@ -371,8 +389,12 @@ with tabs[5]:
    returns × √12; Sharpe = (CAGR − rf) / vol; drawdowns on the value path).
 5. Runs your goals two ways on block-bootstrapped history and counts how often each goal is reached.
 
-**Data:** Yahoo Finance adjusted closes (snapshot {MANIFEST['downloaded'].max()}; prices to {LAST_DAY:%d %b %Y}),
-FRED (euro 3-month rate), Indexa Capital's published series (Dec 2015 to Jan 2025). Engine `dis_lab` v{ENGINE_VERSION}.
+**Data:** Yahoo Finance adjusted closes, FRED (euro 3-month rate) and Indexa Capital's published series (Dec 2015 to
+Jan 2025). Two copies, chosen at the top of the page: the **class snapshot** (downloaded
+{DATASETS['class'][1]['downloaded'].max()}, prices to {LAST['class']:%d %b %Y}), which the Session 3 kit, slides and
+exercise were built on; and the **latest refresh** (downloaded {DATASETS['latest'][1]['downloaded'].max()}, prices to
+{LAST['latest']:%d %b %Y}), updated monthly by a scheduled job after a bad-tick check. You are looking at:
+**{DATA_LABEL[st.session_state.dataset]}**. Engine `dis_lab` v{ENGINE_VERSION}.
 
 **Ask your AI analyst.** Download the metrics CSV from tab 3, attach it, and paste:
 """)

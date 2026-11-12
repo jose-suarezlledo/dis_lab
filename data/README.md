@@ -2,16 +2,21 @@
 
 The apps read only these files, so class never depends on Yahoo Finance or FRED being up. Download dates are in `manifest.csv`.
 
+**Two copies.** `data/` itself is the *latest refresh*: a GitHub Actions job (`.github/workflows/refresh-data.yml`) reruns `scripts/refresh_data.py` on the 2nd of every month (and on demand), checks every series, runs the tests and commits. `data/snapshots/2026-10-13/` is the *frozen class snapshot* the 2026 materials were built on (S1–S3 decks, exercise briefs, the S3 kit): it holds prices, macro, factors and its own manifest, and is never refreshed. Both apps offer a "Data" switch; class scenarios use the snapshot so that numbers match the slides, custom runs use the latest refresh. `engine.data.snapshot_dir()` returns the frozen folder for use as `data_dir` in any loader.
+
+**The refresh safety net.** A ticker that returns no data, comes back shorter than the cached file, or shows a one-day move beyond `engine.data.MAX_DAILY_MOVE` (25%, 45% for crypto) keeps its old file and is flagged in the job summary; the job then goes red so the owner gets an e-mail. Revisions of past returns above 0.1% are noted but accepted (Yahoo corrected a print). Every refresh of a dividend-paying ETF rewrites its whole adjusted history, so the git diff is large; this is normal.
+
 | Path | Content | Source |
 |---|---|---|
 | `universe.csv` | Tickers offered in the apps, with name, asset class, currency, UCITS flag | Hand-curated |
+| `snapshots/<TAG>/` | Frozen copy of `prices/`, `macro/`, `factors/` and `manifest.csv` as of the tag date (see above) | This folder, copied on the tag date |
 | `prices/<TICKER>.csv` | `date, close`: adjusted (total-return) daily close in the listing currency | Yahoo Finance (`yfinance`, `auto_adjust=True`) |
 | `macro/<SERIES>.csv` | `date, value`, latest vintage (not real-time data): `DTB3` (US 3m T-bill, %), `DGS10`, `DEXUSEU` (USD per EUR, Fed noon rate, used for currency conversion), `IR3TIB01EZM156N` (euro-area 3m interbank rate, %, monthly, OECD; lags by several months) | FRED public CSV endpoint |
 | `kits/robo_data_s3.csv` | Session 3 student data kit: month-end EUR values (base 100) of the UCITS building blocks, Indexa's ten profiles, EUR/USD and the two short rates, Dec 2015 to Oct 2026. Built by `scripts/build_kit_s3.py` from this snapshot | This snapshot |
 | `indexa/indexa_stats_returns_mutual.csv` | Indexa Capital model-portfolio returns: profiles 1–10 × 3 account-size tiers, base 100, EUR, net of fees. `;` separator, decimal comma, one row per **calendar** day (weekends repeated) | Indexa Capital published statistics |
 
 Caveats to teach, not hide:
-- **Yahoo adjusted closes are revised** whenever dividends are re-adjusted. Two downloads on different dates won't match to the last decimal.
+- **Yahoo adjusted closes are revised** whenever dividends are re-adjusted. Two downloads on different dates won't match to the last decimal: that is why the class snapshot is frozen.
 - **Listing currency matters.** `IWDA.AS` is in EUR and `URTH` in USD. Comparing them mixes asset returns with EUR/USD moves. Convert with `engine.data.convert_currency()`, which uses the Fed's `DEXUSEU`.
 - **Yahoo's `EURUSD=X` has bad ticks** (e.g. 17% fake daily moves in Dec 2008, up to 15% off the Fed rate). It stays in the snapshot as a find-the-flaw example, but never use it for conversion.
 - **Mutual funds** (`VFINX`, `VBINX`…) carry long histories and are useful for 2000–02 and 2008, but they price once a day at NAV.

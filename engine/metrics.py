@@ -105,7 +105,7 @@ def periods_per_year(index: pd.DatetimeIndex) -> int:
     gap = pd.Series(index).diff().dt.days.median()
     if gap <= 1:
         # Distinguish trading-day data from calendar-day data by weekend presence.
-        has_weekends = (pd.DatetimeIndex(index).dayofweek >= 5).mean() > 0.2
+        has_weekends = (pd.DatetimeIndex(index).day_of_week >= 5).mean() > 0.2
         return 365 if has_weekends else TRADING_DAYS
     if gap <= 4:
         return TRADING_DAYS

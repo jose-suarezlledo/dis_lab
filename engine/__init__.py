@@ -7,5 +7,5 @@
 
 from . import checks, data, factors, fx, metrics, portfolio, robo, stylized
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = ["checks", "data", "factors", "fx", "metrics", "portfolio", "robo", "stylized"]

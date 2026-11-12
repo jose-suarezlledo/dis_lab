@@ -1,0 +1,64 @@
+# Monthly data refresh: download, check, test, commit (only if the tests pass).
+#
+# - Runs at 06:30 UTC on the 2nd of every month (the previous month is complete), and on demand from
+#   GitHub -> Actions -> "Refresh data" -> "Run workflow".
+# - scripts/refresh_data.py keeps the old file for any series that fails, comes back shorter, or shows
+#   a one-day move beyond engine.data.MAX_DAILY_MOVE, and reports it in the job summary.
+# - The push redeploys the Streamlit Cloud apps. The frozen class snapshot in data/snapshots/ is never touched.
+# - A red run means something was not refreshed or a test failed: open the run and read the summary.
+#   GitHub e-mails the repository owner about failed scheduled runs.
+name: Refresh data
+
+on:
+  schedule:
+    - cron: "30 6 2 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install (pinned app versions + yfinance + pytest)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt yfinance pytest
+
+      - name: Download and check every series
+        id: refresh
+        continue-on-error: true
+        run: python scripts/refresh_data.py --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the tests on the refreshed data
+        run: python -m pytest -q
+
+      - name: Commit and push if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/prices data/macro data/factors data/manifest.csv
+          if git diff --cached --quiet; then
+            echo "Nothing changed."
+          else
+            git commit -m "Data refresh $(date -u +%Y-%m-%d) (scheduled job)"
+            git push
+          fi
+
+      - name: Flag series that kept their old data
+        if: steps.refresh.outcome != 'success'
+        run: |
+          echo "::error::Some series were not refreshed (or the download failed). Read the job summary."
+          exit 1

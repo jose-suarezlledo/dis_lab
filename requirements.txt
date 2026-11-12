@@ -1,6 +1,9 @@
-# Used by Streamlit Community Cloud to build the apps (they read the cached snapshot,
-# so yfinance is not needed there; install it locally with `py -m pip install -e ".[download]"`).
-pandas>=2.2
-numpy>=1.26
-streamlit>=1.50
-plotly>=5.20
+# Pinned versions for Streamlit Community Cloud and the GitHub Actions refresh job (tests pass on
+# exactly these; pyproject.toml keeps the looser ranges for local installs). Yahoo is read from the
+# cached snapshot, so yfinance is not needed here; install it locally with `py -m pip install -e ".[download]"`.
+# Lesson of 11 Nov 2026: an unpinned Streamlit upgrade on the Cloud crashed a tab that worked locally.
+# To upgrade: change a pin, run `py -m pytest`, and push.
+streamlit==1.67.0
+pandas==3.1.1
+numpy==2.5.4
+plotly==7.1.0

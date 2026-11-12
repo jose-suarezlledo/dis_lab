@@ -4,8 +4,8 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 
 **Repo:** https://github.com/jose-suarezlledo/dis_lab (public, `main`). Push only as `jose-suarezlledo`. Check with `gh api user --jq .login`, never the fund's `Global-Gradient` account.
 
-## Status (3 Nov 2026)
-- **Engine v0.4** (Session 3 additions marked S3):
+## Status (12 Nov 2026)
+- **Engine v0.5** (Session 3 additions marked S3; v0.5 on 12 Nov 2026 adds `snapshot_dir`, `snapshot_tags`, `suspicious_moves`, `return_revision` to `data.py`):
   - `engine/metrics.py`: all §7 metrics, benchmark-relative metrics, turnover, rolling CAGR/vol/correlation, `to_frequency`, `sharpe_standard_error` (Lo 2002), `STRESS_EPISODES` + `episode_returns`, `summary()` / `summary_table()`, `correlation_matrix(on='returns'|'levels')`, `down_market_table()`. S3: `time_under_water` no longer trips a FutureWarning on int-named series.
   - `engine/data.py`: cache, downloaders, `risk_free_rate()`, `convert_currency()` (USD/EUR via Fed DEXUSEU), `load_indexa()`, Ken French loaders.
   - `engine/portfolio.py`: `fixed_weight_portfolio()`, `cash_from_rate()`, `vol_target_portfolio()`. S3: `drift_band_portfolio()` (reset to target only when a weight drifts beyond ±band, checked daily/monthly/quarterly/yearly; costs and turnover) and `apply_fee()` (annual fee accrued by calendar days).
@@ -15,9 +15,9 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 - **Apps:**
   - `apps/performance_analyzer.py` (toolkit #1): scenarios per session (`?session=2`, `?session=3`). S3: Indexa's ten profiles appended as series `INDEXA-1..10` (asset class `Robo-advisor`, EUR, fund accounts 10–100k€, business days), four Session 3 scenarios (Indexa's profiles vs DIY 60/40; robo vs LifeStrategy vs DIY; world equity USD / EUR unhedged / EUR hedged with the real hedged ETF IWDE.L; rebalancing never/monthly/yearly).
   - S3: `apps/robo_simulator.py` (toolkit #3, "Robo-Advisor Lab"): tabs 1 profile (questionnaire, override), 2 portfolio (table, editable row), 3 backtest (fee layer, rebalancing incl. drift band, costs, window, benchmark = Indexa same profile / V60A.DE / IWDE.L, "the Excel way" toggle = daily free rebalancing, no fee), 4 goals (goal-based vs profile-based, euro ETFs 2009–26 or long US history 1987–2026, bucket 0 = cash), 5 what could be wrong (the seven traps + engine checks), 6 how it works + AI prompt. **Not yet deployed:** create a second Streamlit Cloud app from `main` with main file `apps/robo_simulator.py`; planned name `dislab-robo-lab` (the deck and docs print that URL; rebuild them if the name differs).
-- **Data snapshot:** 73 tickers to 13 Oct 2026 (S3 added IWDE.L, EUNA.DE, XG7S.DE, XEON.DE, V60A.DE on 3 Nov 2026, cut to the same end date), FRED DTB3/DGS10/DEXUSEU/IR3TIB01EZM156N, Indexa profiles, Ken French factors to Aug 2026. S3: `data/kits/robo_data_s3.csv`, the student data file (`py scripts/build_kit_s3.py`).
+- **Data:** 73 tickers, FRED DTB3/DGS10/DEXUSEU/IR3TIB01EZM156N, Indexa profiles, Ken French factors. Since 12 Nov 2026 in two copies: the frozen class snapshot `data/snapshots/2026-10-13/` (prices to 13 Oct 2026; S3 added IWDE.L, EUNA.DE, XG7S.DE, XEON.DE, V60A.DE on 3 Nov, cut to the same end date) and the latest monthly refresh in `data/` (see "Scheduled data refresh"). S3: `data/kits/robo_data_s3.csv`, the student data file, built from the frozen snapshot (`py scripts/build_kit_s3.py`).
 - **Notebooks:** S3: `notebooks/s3_robo_lab.ipynb` (the optional code track: Excel way vs engine, FX views, goals).
-- **Tests:** 150 passing (3 Nov 2026) (`py -m pytest`), including AppTest smoke tests of both apps (every scenario, currencies, frequencies, robo rebalance modes, histories).
+- **Tests:** 149 passing (12 Nov 2026) (`py -m pytest`), including AppTest smoke tests of both apps (every scenario, currencies, frequencies, robo rebalance modes, histories).
 - **Not built yet:** signal-based backtest engine (weights from signals, shifted one period), PSR/DSR, walk-forward.
 
 ## Decisions taken
@@ -44,18 +44,18 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 - The repo sits inside OneDrive. If OneDrive ever reports conflicts in `.git/`, pause OneDrive sync before git operations.
 - Bash heredocs in the Claude Code harness break on non-ASCII characters (€, →, –): write patch scripts with the Write tool and run them with `py`.
 
+## Scheduled data refresh (built 12 Nov 2026; agreed 11 Nov)
+Goal: the apps stay online and current for this and future cohorts, while class numbers never move.
+- **Two copies of the data.** `data/` is the *latest refresh*. `data/snapshots/2026-10-13/` (prices, macro, factors, manifest; 8 MB) is the *frozen class snapshot* every 2026 material was built on; `engine.data.snapshot_dir()` returns it and every loader takes it as `data_dir`. It has no `indexa/` folder (that file is published, never refreshed, read from `data/`). One snapshot serves S1–S3: the S3 tickers had been cut to 13 Oct too, and `scripts/build_kit_s3.py` now reads the snapshot and reproduces `robo_data_s3.csv` byte for byte.
+- **Apps.** Both have a "Data" radio (keys `class` / `latest`, labels fixed at load). In the analyzer every class scenario selects `class` and sets "To" to 13 Oct 2026; "Custom (keep my settings)" selects `latest` and keeps the other settings; the switch can be flipped by hand and "To" follows it. The Robo Lab defaults to `class` (matches the S3 kit). The common-window line and the "How this works" tab say which copy is on screen. `risk_free_rate` / `convert_currency` get the same `data_dir`, so a run never mixes the two copies.
+- **`scripts/refresh_data.py`** (exit 0 = all refreshed, 2 = some series kept their old data): per ticker, no data / shorter than cached / a one-day move beyond `engine.data.MAX_DAILY_MOVE` (25%, crypto 45%, checked on the new rows only) → keep the old file, flag it. Past-return revisions > 0.1% are noted (`return_revision`), not rejected. FRED and Ken French: same keep-or-save rule. `--summary FILE` appends a Markdown table (the GitHub job summary).
+- **`.github/workflows/refresh-data.yml`**: 06:30 UTC on the 2nd of each month + "Run workflow" button; `permissions: contents: write`; installs `requirements.txt` + yfinance (unpinned on purpose: Yahoo-side changes need the newest yfinance; a broken download just means no commit and a red run); refresh → `pytest` → commit `data/prices data/macro data/factors data/manifest.csv` and push → red if any series was flagged. The push redeploys the Streamlit Cloud apps. Repo setting "Workflow permissions = Read and write" was set on 12 Nov 2026 through the API.
+- **First refresh (12 Nov 2026, local):** 78/78 series, prices to 11 Nov 2026, no suspicious moves; DBMF's past returns revised by up to 0.45% (noted). A dividend re-adjustment rewrites a ticker's whole history, so refresh diffs are large (SPY: every line); others are pure appends. Expect roughly 1–3 MB of repo growth per month.
+- **Pinned versions:** `requirements.txt` = streamlit 1.67.0, pandas 3.1.1, numpy 2.5.4, plotly 7.1.0 (full suite passes on these and on the local 1.57 / 2.2.2). The Cloud and the job install exactly these; `pyproject.toml` keeps ranges. `.dayofweek` → `.day_of_week` (pandas 4 removal).
+- **Rule for every conversation:** `git pull` before pushing (the job commits to `main`).
+- **Why pin versions (11 Nov 2026):** Streamlit Cloud installed a newer Streamlit than the local 1.57. A radio whose labels changed with the return frequency then came back empty and crashed the Diversification tab. Fixed in b69a9b4 with fixed labels and a fallback; keep widget labels independent of other settings.
+
 ## Next steps
-0. **Scheduled data refresh (agreed with the instructor on 11 Nov 2026; to build on 12 Nov).** Goal: the apps stay online and current for this and future cohorts.
-   - **Instructor first:** GitHub → Settings → Actions → General → Workflow permissions = "Read and write permissions". Confirm the frequency; monthly (first weekday) was recommended to limit repo growth.
-   - **Build:**
-     - A GitHub Actions workflow runs `scripts/refresh_data.py`, scans every series for bad ticks and runs the tests, and commits only if everything passes. It also has a manual "Run workflow" button.
-     - Failed or closed tickers keep their old data and are flagged.
-     - The class scenarios read a **frozen snapshot**: S1/S2 13 Oct 2026, S3 its own. That keeps the numbers identical to the slides, because Yahoo revises past adjusted prices.
-     - Custom runs on the latest data. An on-screen label says which data the user is seeing.
-     - Pin `requirements.txt` to the tested versions.
-     - Apply the same to the Robo-Advisor Lab.
-   - **After it ships:** every conversation must `git pull` before pushing.
-   - **Why pin versions (11 Nov 2026):** Streamlit Cloud installed a newer Streamlit than the local 1.57. A radio whose labels changed with the return frequency then came back empty and crashed the Diversification tab. Fixed in b69a9b4 with fixed labels and a fallback; keep widget labels independent of other settings.
 1. **Deploy the Robo-Advisor Lab** on Streamlit Community Cloud (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/robo_simulator.py`, app URL `dislab-robo-lab`). Then open both apps ~15 min before class (free apps sleep).
 2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S5 TAA and S7.
 3. Extend the analyzer for S8 (PCA/contribution) rather than writing new apps.
