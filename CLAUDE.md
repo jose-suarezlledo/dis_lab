@@ -4,7 +4,14 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 
 **Repo:** https://github.com/jose-suarezlledo/dis_lab (public, `main`). Push only as `jose-suarezlledo`. Check with `gh api user --jq .login`, never the fund's `Global-Gradient` account.
 
-## Status (12 Nov 2026)
+## Status (25 Nov 2026)
+- **Engine v0.6 (25 Nov 2026, Session 4 = TAA after the session swap):**
+  - `engine/signals.py`: `momentum`, `score_13612w`, `excess_momentum`, `sma`/`above_sma`, `top_n_weights` (absolute filter, safe asset, CASH fallback when the safe asset is not listed yet, `missing="zero"` = the spreadsheet trap on purpose), `dual_momentum_weights`, `gem_weights`, `sma_weights`, `equal_weights` (an asset "exists" once it has a return). The reserved column `CASH` stands for T-bills.
+  - `engine/backtest.py`: `signal_backtest(prices, targets, lag=1, cost_bps, cash_returns, missing)` → `BacktestResult` (nav, returns, targets, held, drifted, turnover, costs, asset_returns, trades); lag=0 is the look-ahead switch; costs on |target − drifted| at each rebalance, first position free; holding an asset without a price raises unless `missing="zero"`; `trace()` for the glass-box view; `cash_returns_from_rate`.
+  - `engine/robustness.py`: `parameter_grid` (failed cells → NaN, not a crash), `nth_trading_day` + `rebalance_day_luck`, `split_periods` (before/after a date, rebased), `subperiod_table` (stress episodes).
+  - 21 unit tests on synthetic data with hand-checked answers (`tests/test_signals_backtest.py`). **179 tests passing** (25 Nov 2026, local 1.57/2.2.2).
+- **Apps:** S4 adds `apps/strategy_lab.py` ("Strategy Lab", toolkit #5; later #6 and #4): sidebar rule builder with presets (GEM, Faber, Top-3 13612W, "the 2025 assignment" trap), tabs Results / Glass box / Robustness / What could be wrong here / Build your own (the student prompt) / How this works; data switch class/latest. 8 AppTest smoke tests. **Not yet deployed:** planned name `dislab-strategy-lab` (deck, docs and QR codes print that URL).
+- **Data:** S4 adds `data/kits/taa_data_s4.csv` (`scripts/build_kit_s4.py`, from the *latest refresh*, month-ends Dec 1986–Oct 2026, 14 tickers + TBILL index + rate), **rebuilt and committed by the monthly job** (workflow step added). GitHub raw serves it with `Access-Control-Allow-Origin: *`, so students' HTML labs fetch it directly (verified 25 Nov).
 - **Engine v0.5** (Session 3 additions marked S3; v0.5 on 12 Nov 2026 adds `snapshot_dir`, `snapshot_tags`, `suspicious_moves`, `return_revision` to `data.py`):
   - `engine/metrics.py`: all §7 metrics, benchmark-relative metrics, turnover, rolling CAGR/vol/correlation, `to_frequency`, `sharpe_standard_error` (Lo 2002), `STRESS_EPISODES` + `episode_returns`, `summary()` / `summary_table()`, `correlation_matrix(on='returns'|'levels')`, `down_market_table()`. S3: `time_under_water` no longer trips a FutureWarning on int-named series.
   - `engine/data.py`: cache, downloaders, `risk_free_rate()`, `convert_currency()` (USD/EUR via Fed DEXUSEU), `load_indexa()`, Ken French loaders.
@@ -18,7 +25,7 @@ Course-wide rules are in `../CLAUDE.md`; metric definitions follow its §7. This
 - **Data:** 73 tickers, FRED DTB3/DGS10/DEXUSEU/IR3TIB01EZM156N, Indexa profiles, Ken French factors. Since 12 Nov 2026 in two copies: the frozen class snapshot `data/snapshots/2026-10-13/` (prices to 13 Oct 2026; S3 added IWDE.L, EUNA.DE, XG7S.DE, XEON.DE, V60A.DE on 3 Nov, cut to the same end date) and the latest monthly refresh in `data/` (see "Scheduled data refresh"). S3: `data/kits/robo_data_s3.csv`, the student data file, built from the frozen snapshot (`py scripts/build_kit_s3.py`).
 - **Notebooks:** S3: `notebooks/s3_robo_lab.ipynb` (the optional code track: Excel way vs engine, FX views, goals).
 - **Tests:** 149 passing (12 Nov 2026) (`py -m pytest`), including AppTest smoke tests of both apps (every scenario, currencies, frequencies, robo rebalance modes, histories).
-- **Not built yet:** signal-based backtest engine (weights from signals, shifted one period), PSR/DSR, walk-forward.
+- **Not built yet:** PSR/DSR (S7), regimes module and the Strategy Lab's Regime page (S5: regime monitor = nearest-neighbour history, signal scorecard, portfolio weather report, walk-forward thresholds), the Paper-track page (registry of students' rules replayed monthly), FRED macro series beyond DTB3/DGS10/DEXUSEU and ALFRED vintages.
 
 ## Decisions taken
 - "Annualized return" in Sharpe, Sortino and Calmar is the **CAGR** (geometric, calendar days / 365.25), not the arithmetic mean × 252. Sortino's target is rf, over all periods.
@@ -56,7 +63,14 @@ Goal: the apps stay online and current for this and future cohorts, while class 
 - **Rule for every conversation:** `git pull` before pushing (the job commits to `main`).
 - **Why pin versions (11 Nov 2026):** Streamlit Cloud installed a newer Streamlit than the local 1.57. A radio whose labels changed with the return frequency then came back empty and crashed the Diversification tab. Fixed in b69a9b4 with fixed labels and a fallback; keep widget labels independent of other settings.
 
+## Decisions taken (S4, 25 Nov 2026)
+- **Signals never see the future by construction:** a score on row *t* uses prices up to *t*; `signal_backtest` shifts targets by `lag` (default 1). `lag=0` exists only so that students can see the size of the error, and the app shows a red warning when it is on.
+- **Missing = not investable.** An asset without the prices a rule needs has a NaN score and cannot be selected; the backtest raises if a held asset has no price. `missing="zero"` reproduces the 2025 template's error and is labelled as a trap everywhere.
+- **Costs** as in `portfolio.py`: one-way bps on |Δw| at each rebalance after drift; turnover one-way; first position free.
+- **Benchmarks in the Strategy Lab** use VFINX/VBMFX (index funds since 1976/1986) so every window has a 60/40 and an "S&P 500".
+- The kit follows the **latest refresh** (students want fresh data); the deck's numbers use the **class snapshot** (to 13 Oct 2026); the app shows both.
+
 ## Next steps
-1. **Deploy the Robo-Advisor Lab** on Streamlit Community Cloud (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/robo_simulator.py`, app URL `dislab-robo-lab`). Then open both apps ~15 min before class (free apps sleep).
-2. Backtest engine: signal → weights shifted one period → `portfolio`-style NAV with costs; bias checks for look-ahead and parameter snooping; PSR/DSR. Needed by S5 TAA and S7.
-3. Extend the analyzer for S8 (PCA/contribution) rather than writing new apps.
+1. **Deploy the Strategy Lab** (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/strategy_lab.py`, app URL `dislab-strategy-lab`) and the Robo-Advisor Lab if still pending (`apps/robo_simulator.py`, `dislab-robo-lab`). Open the apps ~15 min before class (free apps sleep).
+2. S5 (regimes): `engine/regimes.py`, FRED/ALFRED data, the Regime page; then the Paper-track page (registry from the Forms export).
+3. PSR/DSR and walk-forward for S7 on top of `robustness.py`; extend the analyzer for S8 (PCA/contribution) rather than writing new apps.
