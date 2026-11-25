@@ -5,7 +5,8 @@
     metrics.summary_table(prices, benchmark="SPY", rf=0.02)
 """
 
-from . import checks, data, factors, fx, metrics, portfolio, robo, stylized
+from . import backtest, checks, data, factors, fx, metrics, portfolio, robo, robustness, signals, stylized
 
-__version__ = "0.5.0"
-__all__ = ["checks", "data", "factors", "fx", "metrics", "portfolio", "robo", "stylized"]
+__version__ = "0.6.0"
+__all__ = ["backtest", "checks", "data", "factors", "fx", "metrics", "portfolio", "robo", "robustness", "signals",
+           "stylized"]
