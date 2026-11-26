@@ -74,6 +74,8 @@ Goal: the apps stay online and current for this and future cohorts, while class 
 - **Costs** as in `portfolio.py`: one-way bps on |Δw| at each rebalance after drift; turnover one-way; first position free.
 - **Benchmarks in the Strategy Lab** use VFINX/VBMFX (index funds since 1976/1986) so every window has a 60/40 and an "S&P 500".
 - The kit follows the **latest refresh** (students want fresh data); the deck's numbers use the **class snapshot** (to 13 Oct 2026); the app shows both.
+- **Class-scale apps (26 Nov 2026):** Streamlit Community Cloud gives one app about 2 CPU cores for every user, and Streamlit re-runs all tabs on each click. Rule for every app: wrap any computation of more than a few backtests in `st.cache_data` keyed on the settings (so 60 students running the same presets share one computation), and put sweeps (parameter grids, calendars) behind a button. Strategy Lab: ≈ 6 s → ≈ 0.7 s per click. A second deployment of the same main file under another name doubles capacity if ever needed.
+- Session folders were renamed on 26 Nov 2026: `Sessions/4_Tactical_Asset_Allocation`, `Sessions/5_Market_Regimes_Macro_Cycles`.
 
 ## Next steps
 1. **Deploy the Strategy Lab** (instructor: share.streamlit.io → New app → repo `jose-suarezlledo/dis_lab`, branch `main`, main file `apps/strategy_lab.py`, app URL `dislab-strategy-lab`) and the Robo-Advisor Lab if still pending (`apps/robo_simulator.py`, `dislab-robo-lab`). Open the apps ~15 min before class (free apps sleep).
