@@ -202,33 +202,48 @@ def build_targets(prices: pd.DataFrame, cash: pd.Series, settings: dict) -> tupl
 
 settings = {k: S[k] for k in ("rule", "lookback", "top_n", "absolute", "safe", "window", "gem_us", "gem_intl", "gem_bonds",
                               "cost", "lag", "missing")}
+SETTINGS_KEY = tuple(sorted((k, str(v)) for k, v in settings.items()))
 prices = MONTHLY[universe]
-try:
-    targets, score = build_targets(prices, CASH, settings)
-    targets = targets.loc[start_ts:]
-    if targets.empty:
+
+
+# Cached per (data, universe, settings): when a whole class runs the same presets, each is computed once and served
+# to everyone else from memory (the shared Streamlit Cloud app has about 2 CPU cores for all users).
+@st.cache_data(max_entries=400, show_spinner=False)
+def compute(dataset: str, universe_t: tuple, settings_key: tuple, start_year: int, show_6040: bool, show_ew: bool):
+    Dd = DATASETS[dataset]
+    px_, cash_ = Dd["monthly"][list(universe_t)], Dd["cash"]
+    st_ = dict(settings)
+    t_, sc_ = build_targets(px_, cash_, st_)
+    t_ = t_.loc[pd.Timestamp(f"{start_year}-01-01"):]
+    if t_.empty:
         raise ValueError("no decision date on or after the start year; move the start earlier or shorten the lookback")
-    result = signal_backtest(prices, targets, lag=S.lag, cost_bps=S.cost, cash_returns=CASH, missing=S.missing, name="Strategy")
+    res_ = signal_backtest(px_, t_, lag=st_["lag"], cost_bps=st_["cost"], cash_returns=cash_, missing=st_["missing"], name="Strategy")
+    win = res_.nav.index
+    bm: dict[str, pd.Series] = {}
+    spx_ = Dd["monthly"]["VFINX"].reindex(win).dropna()
+    bm["S&P 500 (index fund)"] = 100 * spx_ / spx_.iloc[0]
+    if show_6040:
+        w6040 = pd.DataFrame({"VFINX": 0.6, "VBMFX": 0.4}, index=win)
+        bm["60/40"] = signal_backtest(Dd["monthly"], w6040, lag=0, cost_bps=st_["cost"], name="60/40").nav
+    if show_ew and st_["rule"] != "ew" and len(universe_t) > 1:
+        try:
+            ew_ = sg.equal_weights(px_).loc[win[0]:]
+            bm["Equal weight"] = signal_backtest(px_, ew_, lag=0, cost_bps=st_["cost"], name="Equal weight").nav
+        except ValueError:
+            pass
+    return t_, sc_, res_, bm
+
+
+try:
+    targets, score, result, benchmarks = compute(S.dataset, tuple(universe), SETTINGS_KEY, S.start, S.show_6040, S.show_ew)
 except (ValueError, KeyError) as exc:
     st.error(f"The engine refused this backtest: {exc}")
     st.stop()
+benchmarks = dict(benchmarks)
 
 nav = result.nav
 window = nav.index
 rf = data.risk_free_rate(window[0], window[-1], data_dir=DATA_FOLDERS[S.dataset])
-
-benchmarks: dict[str, pd.Series] = {}
-spx = MONTHLY["VFINX"].reindex(window).dropna()
-benchmarks["S&P 500 (index fund)"] = 100 * spx / spx.iloc[0]
-if S.show_6040:
-    w6040 = pd.DataFrame({"VFINX": 0.6, "VBMFX": 0.4}, index=window)
-    benchmarks["60/40"] = signal_backtest(MONTHLY, w6040, lag=0, cost_bps=S.cost, name="60/40").nav
-if S.show_ew and S.rule != "ew" and len(universe) > 1:
-    try:
-        ew = sg.equal_weights(prices).loc[window[0]:]
-        benchmarks["Equal weight"] = signal_backtest(prices, ew, lag=0, cost_bps=S.cost, name="Equal weight").nav
-    except ValueError:
-        pass
 colors = ui.assign_colors(["Strategy"] + list(benchmarks), S.setdefault("colors", {}))
 
 # --------------------------------------------------------------------------- tabs
@@ -370,54 +385,80 @@ with tabs[2]:
         metric = st.selectbox("Colour by", ["sharpe", "cagr", "max_dd", "worst_year"], key="grid_metric",
                               format_func=lambda k_: m.METRIC_LABELS.get(k_, k_))
 
-        def rule_fn(lookback, top_n):
-            absolute = None if S.absolute == "none" else S.absolute
-            w = sg.dual_momentum_weights(prices, lookback, top_n, absolute, CASH, S.safe, S.missing).loc[start_ts:]
-            return signal_backtest(prices, w, lag=S.lag, cost_bps=S.cost, cash_returns=CASH, missing=S.missing).nav
+        @st.cache_data(max_entries=200, show_spinner=False)
+        def grid_for(dataset, universe_t, absolute, safe, missing, lag, cost, start_year, rf_):
+            Dd = DATASETS[dataset]
+            px_, cash_ = Dd["monthly"][list(universe_t)], Dd["cash"]
+            abs_ = None if absolute == "none" else absolute
 
-        grid = rb.parameter_grid(rule_fn, {"lookback": LOOKBACKS, "top_n": [1, 2, 3, 4]}, rf=rf_grid)
-        grid["lookback"] = grid["lookback"].astype(str)
-        piv = grid.pivot(index="lookback", columns="top_n", values=metric).reindex([str(x) for x in LOOKBACKS])
-        hm = go.Figure(go.Heatmap(z=piv.to_numpy(dtype=float), x=[f"Top-{c}" for c in piv.columns], y=[str(i) for i in piv.index],
-                                  colorscale="RdBu" if metric != "max_dd" else "RdBu_r", text=np.round(piv.to_numpy(dtype=float), 2),
-                                  texttemplate="%{text}", colorbar=dict(title=m.METRIC_LABELS.get(metric, metric))))
-        hm.update_layout(title=f"{m.METRIC_LABELS.get(metric, metric)} across lookback × Top-N (same universe, costs and timing)",
-                         yaxis_title="lookback (months)", height=380, margin=dict(l=10, r=10, t=40, b=10))
-        st.plotly_chart(hm, width="stretch")
-        chosen = grid[(grid["lookback"].astype(str) == str(S.lookback)) & (grid["top_n"] == S.top_n)]
-        if not chosen.empty and chosen[metric].notna().all():
-            better = (grid[metric] > chosen[metric].iloc[0]).sum() if metric != "max_dd" else (grid[metric] > chosen[metric].iloc[0]).sum()
-            st.caption(f"Your cell ranks {int(better) + 1} of {int(grid[metric].notna().sum())} neighbours on {m.METRIC_LABELS.get(metric, metric)}. "
-                       f"Spread across the grid: Sharpe {grid['sharpe'].min():.2f} to {grid['sharpe'].max():.2f}. "
-                       "If only the best cell works, you found noise, not a strategy.")
+            def rule_fn(lookback, top_n):
+                w = sg.dual_momentum_weights(px_, lookback, top_n, abs_, cash_, safe, missing).loc[pd.Timestamp(f"{start_year}-01-01"):]
+                return signal_backtest(px_, w, lag=lag, cost_bps=cost, cash_returns=cash_, missing=missing).nav
+
+            return rb.parameter_grid(rule_fn, {"lookback": LOOKBACKS, "top_n": [1, 2, 3, 4]}, rf=rf_)
+
+        grid_key = (S.dataset, tuple(universe), S.absolute, S.safe, S.missing, S.lag, S.cost, S.start)
+        if st.button("Run the 24 combinations (a few seconds the first time; instant once anyone has run the same settings)", key="run_grid"):
+            S["grid_done"] = grid_key
+        if S.get("grid_done") != grid_key:
+            st.info("Click the button to compute the parameter neighbourhood for these settings.")
+        else:
+            grid = grid_for(*grid_key, rf_grid).copy()
+            grid["lookback"] = grid["lookback"].astype(str)
+            piv = grid.pivot(index="lookback", columns="top_n", values=metric).reindex([str(x) for x in LOOKBACKS])
+            hm = go.Figure(go.Heatmap(z=piv.to_numpy(dtype=float), x=[f"Top-{c}" for c in piv.columns], y=[str(i) for i in piv.index],
+                                      colorscale="RdBu" if metric != "max_dd" else "RdBu_r", text=np.round(piv.to_numpy(dtype=float), 2),
+                                      texttemplate="%{text}", colorbar=dict(title=m.METRIC_LABELS.get(metric, metric))))
+            hm.update_layout(title=f"{m.METRIC_LABELS.get(metric, metric)} across lookback × Top-N (same universe, costs and timing)",
+                             yaxis_title="lookback (months)", height=380, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(hm, width="stretch")
+            chosen = grid[(grid["lookback"].astype(str) == str(S.lookback)) & (grid["top_n"] == S.top_n)]
+            if not chosen.empty and chosen[metric].notna().all():
+                better = (grid[metric] > chosen[metric].iloc[0]).sum()
+                st.caption(f"Your cell ranks {int(better) + 1} of {int(grid[metric].notna().sum())} neighbours on {m.METRIC_LABELS.get(metric, metric)}. "
+                           f"Spread across the grid: Sharpe {grid['sharpe'].min():.2f} to {grid['sharpe'].max():.2f}. "
+                           "If only the best cell works, you found noise, not a strategy.")
     elif S.rule == "sma":
         st.subheader("Window neighbourhood")
-        rows_ = []
-        for wdw in range(3, 16):
-            try:
-                w = sg.sma_weights(prices, wdw, S.safe, S.missing).loc[start_ts:]
-                nv = signal_backtest(prices, w, lag=S.lag, cost_bps=S.cost, cash_returns=CASH, missing=S.missing).nav
-                rows_.append({"window": wdw, "CAGR": m.cagr(nv), "Sharpe": m.sharpe(nv, rf_grid), "Max drawdown": m.max_drawdown(nv)})
-            except ValueError:
-                pass
-        wt = pd.DataFrame(rows_).set_index("window")
+
+        @st.cache_data(max_entries=200, show_spinner=False)
+        def window_sweep(dataset, universe_t, safe, missing, lag, cost, start_year, rf_):
+            Dd = DATASETS[dataset]
+            px_, cash_ = Dd["monthly"][list(universe_t)], Dd["cash"]
+            rows_ = []
+            for wdw in range(3, 16):
+                try:
+                    w = sg.sma_weights(px_, wdw, safe, missing).loc[pd.Timestamp(f"{start_year}-01-01"):]
+                    nv = signal_backtest(px_, w, lag=lag, cost_bps=cost, cash_returns=cash_, missing=missing).nav
+                    rows_.append({"window": wdw, "CAGR": m.cagr(nv), "Sharpe": m.sharpe(nv, rf_), "Max drawdown": m.max_drawdown(nv)})
+                except ValueError:
+                    pass
+            return pd.DataFrame(rows_).set_index("window")
+
+        wt = window_sweep(S.dataset, tuple(universe), S.safe, S.missing, S.lag, S.cost, S.start, rf_grid)
         st.dataframe(wt.T.style.format("{:.2f}"), width="stretch")
         st.caption("Faber chose 10 months in 2007. If 8 or 12 give very different results, the rule is fragile.")
 
     st.subheader("Rebalance-day luck")
     st.markdown("The same rule, with 'month' defined as the 1st, 6th, 11th or 16th trading day instead of the month-end. "
                 "Nothing about the strategy changed; only the calendar.")
-    if st.button("Run the five calendars (a few seconds)", key="run_luck"):
-        daily = DAILY[universe].dropna(how="all")
+    @st.cache_data(max_entries=200, show_spinner=False)
+    def luck_for(dataset, universe_t, settings_key, start_year, rf_):
+        Dd = DATASETS[dataset]
+        daily = Dd["daily"][list(universe_t)].dropna(how="all")
+        st_ = dict(settings)
 
         def rule_daily(monthly_px: pd.DataFrame) -> pd.Series:
-            c = cash_returns_from_rate(D["rate"], monthly_px.index)
-            w, _ = build_targets(monthly_px, c, settings)
-            w = w.loc[start_ts:]
-            return signal_backtest(monthly_px, w, lag=S.lag, cost_bps=S.cost, cash_returns=c, missing=S.missing).nav
+            c = cash_returns_from_rate(Dd["rate"], monthly_px.index)
+            w, _ = build_targets(monthly_px, c, st_)
+            w = w.loc[pd.Timestamp(f"{start_year}-01-01"):]
+            return signal_backtest(monthly_px, w, lag=st_["lag"], cost_bps=st_["cost"], cash_returns=c, missing=st_["missing"]).nav
 
+        return rb.rebalance_day_luck(daily, rule_daily, days=(0, 5, 10, 15, -1), rf=rf_)
+
+    if st.button("Run the five calendars (a few seconds)", key="run_luck"):
         try:
-            luck = rb.rebalance_day_luck(daily, rule_daily, days=(0, 5, 10, 15, -1), rf=rf_grid)
+            luck = luck_for(S.dataset, tuple(universe), SETTINGS_KEY, S.start, rf_grid)
             st.dataframe(luck[["cagr", "vol", "sharpe", "max_dd", "worst_year"]].astype(float).style.format("{:.3f}"), width="stretch")
             st.caption(f"CAGR from {luck['cagr'].min():.1%} to {luck['cagr'].max():.1%}, max drawdown from "
                        f"{luck['max_dd'].max():.0%} to {luck['max_dd'].min():.0%}: that range is luck, not skill (Hoffstein et al., 2019).")

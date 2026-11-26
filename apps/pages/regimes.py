@@ -59,6 +59,50 @@ def track_record(key: str, cols: tuple[str, ...], asset: str, horizon: int, k: i
     return rg.analog_track_record(ze, rets[asset], horizon, k)
 
 
+@st.cache_data(show_spinner=False)
+def rotation_navs(key: str) -> dict:
+    """The 2025 spreadsheet's rotation, full-sample vs expanding weights, with SPY and equal weight (cached per dataset)."""
+    _, known, _, monthly, _, _ = load(key)
+    px5 = monthly[EXCEL_ETFS].dropna()
+    r5 = px5.pct_change(fill_method=None).dropna()
+    reg5 = rg.threshold_regimes(known["IP_YOY"], known["DGS2"], "rolling", 37).reindex(r5.index)
+    out = {md: signal_backtest(px5, rg.regime_rotation_targets(r5, reg5, md), lag=1, cost_bps=10, name=md).nav for md in ("full", "expanding")}
+    s0 = out["expanding"].index[0]
+    spy = px5["SPY"].loc[s0:]
+    ew = signal_backtest(px5, pd.DataFrame(0.2, index=r5.index, columns=EXCEL_ETFS).loc[s0:], lag=0, cost_bps=10).nav
+    navs = {"Rotation, full-sample averages (spreadsheet)": out["full"].loc[s0:], "Rotation, expanding averages (honest)": out["expanding"],
+            "S&P 500 (SPY)": spy, "Equal weight of the 5": ew}
+    return {k: 100 * v / v.iloc[0] for k, v in navs.items()}
+
+
+@st.cache_data(max_entries=200, show_spinner=False)
+def filter_run(key: str, rule: str, kind: str, fmode: str, flag_lag: bool):
+    """A Session 4 rule with and without a macro filter (cached per settings)."""
+    panel, known, _, monthly, cash, _ = load(key)
+    P8 = monthly[list(dict.fromkeys(U8))]
+    if rule == "gem":
+        base_t = sg.gem_weights(monthly, "SPY", "EFA", "AGG", cash)
+        risky = ["SPY", "EFA"]
+    elif rule == "faber":
+        base_t = sg.sma_weights(monthly[["SPY"]], 10)
+        risky = ["SPY"]
+    elif rule == "top3":
+        base_t = sg.dual_momentum_weights(P8, "13612W", 3, "cash", cash, "AGG").loc["2006-02-28":]
+        risky = [x for x in U8 if x not in ("AGG", "TLT")]
+    else:
+        base_t = pd.DataFrame({"SPY": 1.0}, index=monthly["SPY"].dropna().index)
+        risky = ["SPY"]
+    on = rg.risk_on_filter(known if flag_lag else panel, kind, fmode, 12)
+    filt_t = rg.apply_filter(base_t, on, risky)
+    base_t = base_t.copy()
+    if "CASH" not in base_t.columns:
+        base_t["CASH"] = 0.0
+    start_ = max(base_t.index[0], on.dropna().index[0])
+    res_b = signal_backtest(monthly, base_t.loc[start_:], lag=1, cost_bps=10, cash_returns=cash, name="Rule")
+    res_f = signal_backtest(monthly, filt_t.loc[start_:], lag=1, cost_bps=10, cash_returns=cash, name="Rule + filter")
+    return res_b, res_f, on, filt_t
+
+
 st.title("Regimes")
 st.caption("DIS toolkit #4 · Session 5 · Arc stages: **Idea → Data → Rules / Model → Backtest** · every number comes from the shared `dis_lab` engine")
 st.markdown("> **The decision:** a fund (or your AI) says it rotates by macro regime and shows Sharpe 0.9 vs 0.6. Would you move €100k of a world index fund "
@@ -202,18 +246,8 @@ with tabs[2]:
     st.subheader("The 2025 spreadsheet's rotation, honestly")
     st.markdown("Factor ETFs (S&P 500 value IVE, growth IVW, quality SPHQ, the S&P 500 SPY, small caps IWM). In each regime, weights proportional to each ETF's average "
                 "return in that regime: computed on the **full sample** (the spreadsheet) or only on **months before** each decision (expanding).")
-    px5 = MONTHLY[EXCEL_ETFS].dropna()
-    r5 = px5.pct_change(fill_method=None).dropna()
-    reg5 = rg.threshold_regimes(KNOWN["IP_YOY"], KNOWN["DGS2"], "rolling", 37).reindex(r5.index)
-    out = {}
-    for md in ("full", "expanding"):
-        tg = rg.regime_rotation_targets(r5, reg5, md)
-        out[md] = signal_backtest(px5, tg, lag=1, cost_bps=10, name=md).nav
-    spy = px5["SPY"].loc[out["expanding"].index[0]:]
-    ew = signal_backtest(px5, pd.DataFrame(0.2, index=r5.index, columns=EXCEL_ETFS).loc[out["expanding"].index[0]:], lag=0, cost_bps=10).nav
-    navs = {"Rotation, full-sample averages (spreadsheet)": out["full"].loc[out["expanding"].index[0]:], "Rotation, expanding averages (honest)": out["expanding"],
-            "S&P 500 (SPY)": 100 * spy / spy.iloc[0], "Equal weight of the 5": ew}
-    navs = {k_: 100 * v / v.iloc[0] for k_, v in navs.items()}
+    navs = rotation_navs(st.session_state.rg_dataset)
+    spy = navs["S&P 500 (SPY)"]
     rf = data.risk_free_rate(spy.index[0], spy.index[-1], data_dir=DATA_FOLDERS[st.session_state.rg_dataset])
     st.dataframe(pd.DataFrame({k_: m.summary(v, None, rf)[["start", "cagr", "vol", "sharpe", "max_dd"]] for k_, v in navs.items()}).T
                  .style.format({"cagr": "{:.1%}", "vol": "{:.1%}", "sharpe": "{:.2f}", "max_dd": "{:.1%}"}), width="stretch")
@@ -234,28 +268,7 @@ with tabs[3]:
                                     "sahm": "Sahm rule: risk off when ≥ 0.5"}.get)
     fmode = c.radio("Average", ["rolling", "full"], key="rg_fmode", format_func={"rolling": "Rolling 12 months", "full": "Full sample (look-ahead)"}.get)
     flag_lag = d.toggle("Respect publication lags", True, key="rg_flag_lag")
-    P8 = MONTHLY[list(dict.fromkeys(U8))]
-    if rule == "gem":
-        base_t = sg.gem_weights(MONTHLY, "SPY", "EFA", "AGG", CASH)
-        risky = ["SPY", "EFA"]
-    elif rule == "faber":
-        base_t = sg.sma_weights(MONTHLY[["SPY"]], 10)
-        risky = ["SPY"]
-    elif rule == "top3":
-        base_t = sg.dual_momentum_weights(P8, "13612W", 3, "cash", CASH, "AGG").loc["2006-02-28":]
-        risky = [x for x in U8 if x not in ("AGG", "TLT")]
-    else:
-        base_t = pd.DataFrame({"SPY": 1.0}, index=MONTHLY["SPY"].dropna().index)
-        risky = ["SPY"]
-    src = KNOWN if flag_lag else PANEL
-    on = rg.risk_on_filter(src, kind, fmode, 12)
-    filt_t = rg.apply_filter(base_t, on, risky)
-    base_t = base_t.copy()
-    if "CASH" not in base_t.columns:
-        base_t["CASH"] = 0.0
-    start_ = max(base_t.index[0], on.dropna().index[0])
-    res_b = signal_backtest(MONTHLY, base_t.loc[start_:], lag=1, cost_bps=10, cash_returns=CASH, name="Rule")
-    res_f = signal_backtest(MONTHLY, filt_t.loc[start_:], lag=1, cost_bps=10, cash_returns=CASH, name="Rule + filter")
+    res_b, res_f, on, filt_t = filter_run(st.session_state.rg_dataset, rule, kind, fmode, flag_lag)
     rf = data.risk_free_rate(res_b.nav.index[0], res_b.nav.index[-1], data_dir=DATA_FOLDERS[st.session_state.rg_dataset])
     tbl = {}
     for nm, nv in (("Rule", res_b.nav), ("Rule + filter", res_f.nav)):
@@ -333,12 +346,10 @@ with tabs[5]:
 # --------------------------------------------------------------------------- build your own
 with tabs[6]:
     st.markdown("### Build your own regime monitor")
-    st.markdown("Paste into your AI assistant. The data comes from FRED's public CSV links (no key needed for the latest vintage).")
+    st.markdown("Paste into your AI assistant. The page it builds runs entirely in your browser; the data comes from copies of the FRED series in the course repository (refreshed monthly), which a web page can fetch directly. Keep the file: it is yours.")
     st.code("""You are my macro analyst. Build a single-file HTML page (plain JavaScript, Plotly from a CDN) called "My Regime Monitor".
 
-DATA. Fetch these FRED series as CSV from https://fred.stlouisfed.org/graph/fredgraph.csv?id=SERIES (if the browser blocks it, give me a file picker for the downloaded CSVs): INDPRO (industrial production), CPIAUCSL (consumer prices), UNRATE (unemployment), GS10 and TB3MS (10-year and 3-month rates), BAA (Baa corporate yield), USREC (NBER recessions). Put every series at month-end.
-
-REAL TIME. Industrial production, CPI and unemployment for month t are published during month t+1: shift them one month before using them. Never compute an average, a threshold or a z-score with data after the date it is used for.
+DATA. Fetch these series as CSV from the course repository, which browsers are allowed to read: https://raw.githubusercontent.com/jose-suarezlledo/dis_lab/main/data/macro/SERIES.csv (columns: date,value; refreshed monthly). SERIES = INDPRO (industrial production), CPIAUCSL (consumer prices), UNRATE (unemployment), GS10 and TB3MS (10-year and 3-month rates), BAA (Baa corporate yield), USREC (NBER recessions), ALFRED_PAYEMS_first (payrolls as first published) and PAYEMS (payrolls today). Also offer a file picker for the same CSVs downloaded by hand. Put every series at month-end.\n\nREAL TIME. Industrial production, CPI and unemployment for month t are published during month t+1: shift them one month before using them. Never compute an average, a threshold or a z-score with data after the date it is used for.
 
 READINGS. Growth = INDPRO % change over 12 months; inflation = CPIAUCSL % change over 12 months; labour = UNRATE minus its value 12 months earlier; curve = GS10 − TB3MS; credit = BAA − GS10.
 
