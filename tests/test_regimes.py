@@ -28,7 +28,7 @@ def test_threshold_modes_and_labels():
     full = rg.threshold_regimes(g, inf, "full")
     assert full.iloc[0] == "B" and full.iloc[-1] == "D"  # below/above the full-sample average of 0.5
     roll = rg.threshold_regimes(g, inf, "rolling", window=12)
-    assert roll.iloc[:11].isna().all()
+    assert roll.iloc[:8].isna().all() and roll.iloc[9:].notna().all()  # needs 80% of the window (a missing month is tolerated)
     with pytest.raises(ValueError):
         rg.threshold_regimes(g, inf, "nope")
 
@@ -128,6 +128,10 @@ def test_regimes_page_runs_every_option():
         at.selectbox(key="rg_rule").set_value(rule)
         at.run(timeout=180)
         assert not at.exception, (rule, [e.value for e in at.exception])
+    for kind in ("payrolls_first", "credit"):
+        at.selectbox(key="rg_kind").set_value(kind)
+        at.run(timeout=180)
+        assert not at.exception, (kind, [e.value for e in at.exception])
     at.radio(key="rg_wuni").set_value("etf")
     at.radio(key="rg_mode").set_value("full")
     at.toggle(key="rg_lag").set_value(False)

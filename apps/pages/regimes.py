@@ -226,9 +226,12 @@ with tabs[3]:
     a, b, c, d = st.columns(4)
     rule = a.selectbox("Rule", ["gem", "faber", "top3", "bh"], key="rg_rule",
                        format_func={"gem": "GEM (SPY/EFA/AGG)", "faber": "Faber 10-month on SPY", "top3": "Top-3 of 8 (13612W)", "bh": "Buy and hold SPY"}.get)
-    kind = b.selectbox("Filter", ["curve", "credit", "growth", "sahm"], key="rg_kind",
+    kind = b.selectbox("Filter", ["curve", "credit", "growth", "payrolls", "payrolls_first", "sahm"], key="rg_kind",
                        format_func={"curve": "Yield curve: risk off when 10y − 3m < 0", "credit": "Credit: risk off when Baa spread above its 12m average",
-                                    "growth": "Growth: risk off when IP growth below its 12m average", "sahm": "Sahm rule: risk off when ≥ 0.5"}.get)
+                                    "growth": "Growth (industrial production, revised): risk off when below its 12m average",
+                                    "payrolls": "Growth (payrolls, revised): risk off when below its 12m average",
+                                    "payrolls_first": "Growth (payrolls as FIRST PUBLISHED, ALFRED): same rule, real-time data",
+                                    "sahm": "Sahm rule: risk off when ≥ 0.5"}.get)
     fmode = c.radio("Average", ["rolling", "full"], key="rg_fmode", format_func={"rolling": "Rolling 12 months", "full": "Full sample (look-ahead)"}.get)
     flag_lag = d.toggle("Respect publication lags", True, key="rg_flag_lag")
     P8 = MONTHLY[list(dict.fromkeys(U8))]

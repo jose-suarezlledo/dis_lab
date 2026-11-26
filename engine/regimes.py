@@ -33,7 +33,7 @@ __all__ = ["PUB_LAG", "macro_panel", "known_at", "long_returns", "threshold_regi
            "risk_on_filter", "apply_filter", "stock_bond_correlation", "realtime_vs_revised_payrolls"]
 
 # Publication lag in months: the value for month t is first published during month t + lag.
-PUB_LAG = {"IP_YOY": 1, "CPI_YOY": 1, "UNRATE": 1, "UNRATE_CHG12": 1, "PAYEMS_YOY": 1, "SAHM": 1, "USREC": 12,
+PUB_LAG = {"IP_YOY": 1, "CPI_YOY": 1, "UNRATE": 1, "UNRATE_CHG12": 1, "PAYEMS_YOY": 1, "PAYEMS_YOY_FIRST": 1, "SAHM": 1, "USREC": 12,
            "T10Y2Y": 0, "T10Y3M": 0, "SLOPE": 0, "DGS2": 0, "GS10": 0, "TB3MS": 0, "CREDIT": 0, "BAA10Y": 0}
 LABELS = {"IP_YOY": "Industrial production, % y/y", "CPI_YOY": "Consumer prices, % y/y", "UNRATE": "Unemployment rate, %",
           "UNRATE_CHG12": "Unemployment rate, change over 12 months (pts)", "PAYEMS_YOY": "Payrolls, % y/y",
@@ -62,6 +62,11 @@ def macro_panel(data_dir=None) -> pd.DataFrame:
     out["UNRATE_CHG12"] = un - un.shift(12)
     pay = _month_end(f("PAYEMS"))
     out["PAYEMS_YOY"] = 100 * pay.pct_change(12, fill_method=None)
+    try:  # payrolls growth as first published (ALFRED initial releases; payrolls are never rebased, so the ratio is meaningful)
+        first = _month_end(f("ALFRED_PAYEMS_first"))
+        out["PAYEMS_YOY_FIRST"] = 100 * (first / first.shift(12) - 1)
+    except KeyError:
+        pass
     out["SAHM"] = _month_end(f("SAHMREALTIME"))
     out["USREC"] = _month_end(f("USREC"))
     for sid in ("T10Y2Y", "T10Y3M", "DGS2", "BAA10Y"):
@@ -110,10 +115,12 @@ QUADRANT_NAMES = {"A": "Growth up, inflation up", "B": "Growth down, inflation u
 def _threshold(x: pd.Series, mode: str, window: int) -> pd.Series:
     if mode == "full":
         return pd.Series(x.mean(), index=x.index)  # look-ahead: uses the whole sample, future included
+    # min_periods below the window so that one unpublished month (e.g. US CPI for Oct 2025, never collected) does not
+    # blank the average for the next `window` months
     if mode == "expanding":
         return x.expanding(min_periods=window).mean()
     if mode == "rolling":
-        return x.rolling(window, min_periods=window).mean()
+        return x.rolling(window, min_periods=max(2, int(0.8 * window))).mean()
     raise ValueError("mode must be 'full', 'expanding' or 'rolling'")
 
 
@@ -355,7 +362,9 @@ def stock_bond_correlation(stocks: pd.Series, bonds: pd.Series, window: int = 36
 
 def risk_on_filter(panel_known: pd.DataFrame, kind: str, mode: str = "rolling", window: int = 12) -> pd.Series:
     """True = risk on. kind: 'curve' (10y − 3m ≥ 0), 'sahm' (< 0.5), 'growth' (IP growth ≥ its average),
-    'credit' (Baa spread ≤ its average). mode for the averages: 'rolling' (window months), 'expanding', or 'full' (look-ahead)."""
+    'credit' (Baa spread ≤ its average), 'payrolls' (payroll growth ≥ its average, revised data) and 'payrolls_first'
+    (the same with payrolls as first published: the real-time version).
+    mode for the averages: 'rolling' (window months), 'expanding', or 'full' (look-ahead)."""
     p = panel_known
     if kind == "curve":
         x = p["SLOPE"]
@@ -369,8 +378,11 @@ def risk_on_filter(panel_known: pd.DataFrame, kind: str, mode: str = "rolling", 
     elif kind == "credit":
         x = p["CREDIT"]
         on = x <= _threshold(x, mode, window)
+    elif kind in ("payrolls", "payrolls_first"):
+        x = p["PAYEMS_YOY" if kind == "payrolls" else "PAYEMS_YOY_FIRST"]
+        on = x >= _threshold(x, mode, window)
     else:
-        raise ValueError("kind must be 'curve', 'sahm', 'growth' or 'credit'")
+        raise ValueError("kind must be 'curve', 'sahm', 'growth', 'credit', 'payrolls' or 'payrolls_first'")
     return on.where(x.notna()).astype("float").rename(kind)
 
 
