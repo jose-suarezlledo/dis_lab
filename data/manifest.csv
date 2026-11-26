@@ -1,9 +1,25 @@
 kind,id,source,first_date,last_date,rows,downloaded
 factors,french_us_monthly,"Kenneth French data library (monthly, US)",1926-07-31,2026-09-30,1203,2026-11-13
+fred,ALFRED_INDPRO_first,FRED fredgraph.csv (latest vintage),1927-01-01,2026-10-01,1198,2026-11-26
+fred,ALFRED_PAYEMS_first,FRED fredgraph.csv (latest vintage),1955-05-01,2026-10-01,858,2026-11-26
+fred,BAA,FRED fredgraph.csv (latest vintage),1919-01-01,2026-10-01,1294,2026-11-26
+fred,BAA10Y,FRED fredgraph.csv (latest vintage),1986-01-02,2026-11-24,10224,2026-11-26
+fred,CPIAUCSL,FRED fredgraph.csv (latest vintage),1947-01-01,2026-10-01,957,2026-11-26
 fred,DEXUSEU,FRED fredgraph.csv (latest vintage),1999-01-04,2026-11-06,6984,2026-11-13
 fred,DGS10,FRED fredgraph.csv (latest vintage),1962-01-02,2026-11-10,16200,2026-11-13
+fred,DGS2,FRED fredgraph.csv (latest vintage),1976-06-01,2026-11-24,12617,2026-11-26
 fred,DTB3,FRED fredgraph.csv (latest vintage),1954-01-04,2026-11-10,18206,2026-11-13
+fred,GS10,FRED fredgraph.csv (latest vintage),1953-04-01,2026-10-01,883,2026-11-26
+fred,INDPRO,FRED fredgraph.csv (latest vintage),1919-01-01,2026-10-01,1294,2026-11-26
 fred,IR3TIB01EZM156N,FRED fredgraph.csv (latest vintage),1994-01-01,2026-01-01,385,2026-11-13
+fred,PAYEMS,FRED fredgraph.csv (latest vintage),1939-01-01,2026-10-01,1054,2026-11-26
+fred,RECPROUSM156N,FRED fredgraph.csv (latest vintage),1967-06-01,2026-09-01,712,2026-11-26
+fred,SAHMREALTIME,FRED fredgraph.csv (latest vintage),1959-12-01,2026-10-01,802,2026-11-26
+fred,T10Y2Y,FRED fredgraph.csv (latest vintage),1976-06-01,2026-11-25,12618,2026-11-26
+fred,T10Y3M,FRED fredgraph.csv (latest vintage),1982-01-04,2026-11-25,11227,2026-11-26
+fred,TB3MS,FRED fredgraph.csv (latest vintage),1934-01-01,2026-10-01,1114,2026-11-26
+fred,UNRATE,FRED fredgraph.csv (latest vintage),1948-01-01,2026-10-01,945,2026-11-26
+fred,USREC,FRED fredgraph.csv (latest vintage),1854-12-01,2026-10-01,2063,2026-11-26
 price,4GLD.DE,yfinance (auto_adjust=True),2009-11-13,2026-11-12,4314,2026-11-13
 price,ACWI,yfinance (auto_adjust=True),2008-03-28,2026-11-12,4688,2026-11-13
 price,AGG,yfinance (auto_adjust=True),2003-09-29,2026-11-12,5819,2026-11-13

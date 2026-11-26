@@ -33,6 +33,21 @@ FRED_SERIES = {
     "DGS10": "10-year Treasury constant-maturity yield, %",
     "DEXUSEU": "USD per EUR, Fed H.10 noon rate (currency conversion)",
     "IR3TIB01EZM156N": "Euro-area 3-month interbank rate, %, monthly (EUR risk-free rate)",
+    # Session 5 (regimes); the ALFRED first releases (ALFRED_*_first) are frozen and not refreshed here
+    "INDPRO": "Industrial production index (monthly)",
+    "CPIAUCSL": "Consumer price index, all urban (monthly)",
+    "UNRATE": "Unemployment rate, % (monthly)",
+    "PAYEMS": "Nonfarm payrolls, thousands (monthly)",
+    "T10Y2Y": "10y minus 2y Treasury yield (daily)",
+    "T10Y3M": "10y minus 3m Treasury yield (daily)",
+    "DGS2": "2-year Treasury yield, % (daily)",
+    "GS10": "10-year Treasury yield, % (monthly average)",
+    "TB3MS": "3-month T-bill rate, % (monthly average)",
+    "BAA": "Moody's Baa corporate bond yield, % (monthly)",
+    "BAA10Y": "Baa minus 10-year Treasury (daily)",
+    "SAHMREALTIME": "Sahm rule recession indicator, real time (monthly)",
+    "USREC": "NBER recession indicator (monthly)",
+    "RECPROUSM156N": "Smoothed US recession probabilities, Chauvet-Piger (monthly)",
 }
 REVISION_NOTE = 0.001  # a past daily return that moved by more than this is worth a note
 
